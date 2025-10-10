@@ -5,9 +5,9 @@ export default function Layout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="register" />
-      <Stack.Screen name="user-dashboard" />
-      <Stack.Screen name="seller-dashboard" />
-      <Stack.Screen name="admin-dashboard" />
+      <Stack.Screen name="buyer/dashboard" />
+      <Stack.Screen name="seller/dashboard" />
+      <Stack.Screen name="admin/dashboard" />
       <Stack.Screen name="verify-email" />
     </Stack>
   );

@@ -1,17 +1,26 @@
-import { View, Text, Button, StyleSheet } from "react-native";
+import { View, Text, Button, StyleSheet, Alert } from "react-native";
+import { useRouter } from "expo-router";
+import { useAuth } from "../../hooks/useAuth";
 
-export default function BuyerDashboard() {
+export default function UserDashboard() {
+  const router = useRouter();
+  const { logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    Alert.alert("Logged out");
+    router.push("../login");
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.welcome}>Welcome Buyer 👋</Text>
-      <Text style={styles.subtitle}>
-        Browse and shop your favorite products!
-      </Text>
-
-      <View style={styles.actions}>
-        <Button title="Start Shopping 🛒" onPress={() => {}} />
-        <Button title="View Orders 📦" color="#4CAF50" onPress={() => {}} />
+      <Text style={styles.title}>Welcome User 👋</Text>
+      <Text style={styles.text}>Explore products and services</Text>
+      <View style={styles.buttons}>
+        <Button title="Profile" onPress={() => {}} />
+        <Button title="Orders" color="#4CAF50" onPress={() => {}} />
       </View>
+      <Button title="Logout" color="#d9534f" onPress={handleLogout} />
     </View>
   );
 }
@@ -19,26 +28,12 @@ export default function BuyerDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center", // centers vertically
-    alignItems: "center", // centers horizontally
-    backgroundColor: "#f9f9f9",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
     padding: 20,
   },
-  welcome: {
-    fontSize: 26,
-    fontWeight: "bold",
-    color: "#222",
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#555",
-    textAlign: "center",
-    marginBottom: 30,
-  },
-  actions: {
-    width: "80%",
-    gap: 12,
-  },
+  title: { fontSize: 26, fontWeight: "bold", marginBottom: 10 },
+  text: { fontSize: 16, color: "#555", marginBottom: 30 },
+  buttons: { width: "80%", gap: 10, marginBottom: 20 },
 });
