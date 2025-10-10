@@ -1,19 +1,40 @@
 import { useState } from "react";
+import { Platform } from "react-native";
 import api from "../constants/api";
 import * as SecureStore from "expo-secure-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
+// --- Helpers for cross-platform storage ---
+async function setItem(key, value) {
+  if (Platform.OS === "web") return AsyncStorage.setItem(key, value);
+  return SecureStore.setItemAsync(key, value);
+}
+
+async function getItem(key) {
+  if (Platform.OS === "web") return AsyncStorage.getItem(key);
+  return SecureStore.getItemAsync(key);
+}
+
+async function deleteItem(key) {
+  if (Platform.OS === "web") return AsyncStorage.removeItem(key);
+  return SecureStore.deleteItemAsync(key);
+}
+
+// --- Hook start ---
 export function useAuth() {
   const [loading, setLoading] = useState(false);
 
-  const saveToken = async (token) => {
-    await SecureStore.setItemAsync("access_token", token);
-  };
-
   const login = async (username, password) => {
+    if (loading) return;
     setLoading(true);
     try {
       const res = await api.post("/auth/login", { username, password });
-      if (res.data.access_token) await saveToken(res.data.access_token);
+
+      if (res.data.accessToken) {
+        await setItem("access_token", res.data.accessToken);
+        await setItem("user_data", JSON.stringify(res.data));
+      }
+
       return res.data;
     } finally {
       setLoading(false);
@@ -21,6 +42,7 @@ export function useAuth() {
   };
 
   const register = async (data) => {
+    if (loading) return;
     setLoading(true);
     try {
       const res = await api.post("/auth/register", data);
@@ -30,22 +52,26 @@ export function useAuth() {
     }
   };
 
-  // ✅ Improved logout
   const logout = async () => {
+    if (loading) return;
+    setLoading(true);
     try {
-      const response = await api.post("/auth/logout");
-      console.log("Logout response:", response.data?.message);
-    } catch (error) {
-      console.warn("Logout API failed:", error.message);
+      const res = await api.post("/auth/logout");
+      console.log("Logout response:", res.data?.message || res.status);
+    } catch (err) {
+      console.warn("Logout error:", err.message);
     } finally {
-      try {
-        await SecureStore.deleteItemAsync("access_token");
-        console.log("Access token deleted successfully");
-      } catch (err) {
-        console.error("Error deleting token:", err);
-      }
+      await deleteItem("access_token");
+      await deleteItem("user_data");
+      console.log("Access token deleted successfully");
+      setLoading(false);
     }
   };
 
-  return { login, register, logout, loading };
+  const getUser = async () => {
+    const data = await getItem("user_data");
+    return data ? JSON.parse(data) : null;
+  };
+
+  return { login, register, logout, getUser, loading };
 }

@@ -79,7 +79,7 @@ export default function Login() {
 
       if (role === "admin") router.push("/admin/dashboard");
       else if (role === "seller") router.push("/seller/dashboard");
-      else router.push("/buyer/dashboard"); // default user
+      else router.replace("/buyer/(tabs)/marketplace"); // default user
 
       Alert.alert("Success", "Logged in successfully");
     } catch (err) {
