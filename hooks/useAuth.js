@@ -14,7 +14,7 @@ export function useAuth() {
     try {
       const res = await api.post("/auth/login", { username, password });
       await saveToken(res.data?.access_token);
-      return res.data;
+      return res.data; // <-- includes role
     } catch (err) {
       throw err;
     } finally {
