@@ -1,18 +1,18 @@
-import React, { useEffect, useState, useContext } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useContext, useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  Image,
-  ScrollView,
-  Button,
-  TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
   Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import api from "../../../constants/api";
-import { CartContext } from "../../../contexts/CartContext";
+
+import api from "@/constants/api";
+import { CartContext } from "@/contexts/CartContext";
 
 export default function ProductDetails() {
   const { id } = useLocalSearchParams();
@@ -31,7 +31,7 @@ export default function ProductDetails() {
     try {
       // GET /products/:id
       const res = await api.get(`/products/${id}`);
-      setProduct(res.data);
+      setProduct(res.data.product);
     } catch (err) {
       console.warn("Failed to fetch product:", err.message);
     } finally {
@@ -40,7 +40,9 @@ export default function ProductDetails() {
   };
 
   if (loading || !product) {
-    return <ActivityIndicator style={{ flex: 1 }} size="large" color="#7C3AED" />;
+    return (
+      <ActivityIndicator style={{ flex: 1 }} size="large" color="#7C3AED" />
+    );
   }
 
   const seller = product.seller || product.seller_details || {};
@@ -77,10 +79,15 @@ export default function ProductDetails() {
 
         <View style={styles.sellerCard}>
           <Text style={styles.sellerTitle}>Seller</Text>
-          <TouchableOpacity onPress={() => router.push(`/buyer/seller/${seller.id}`)}>
-            <Text style={styles.sellerName}>{seller.name || seller.company || "Seller"}</Text>
+          <TouchableOpacity
+            onPress={() => router.push(`/buyer/seller/${seller.id}`)}
+          >
+            <Text style={styles.sellerName}>
+              {seller.name || seller.company || "Seller"}
+            </Text>
             <Text style={styles.sellerMeta}>
-              Rating: {seller.rating ?? "N/A"} • {seller.reviews?.length ?? 0} reviews
+              Rating: {seller.rating ?? "N/A"} • {seller.reviews?.length ?? 0}{" "}
+              reviews
             </Text>
           </TouchableOpacity>
 
@@ -103,7 +110,12 @@ const styles = StyleSheet.create({
   image: { width: "100%", height: 300, backgroundColor: "#f0f0f0" },
   body: { padding: 16 },
   title: { fontSize: 22, fontWeight: "700", marginBottom: 6 },
-  price: { fontSize: 20, fontWeight: "700", color: "#7C3AED", marginBottom: 12 },
+  price: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#7C3AED",
+    marginBottom: 12,
+  },
   desc: { fontSize: 14, color: "#444", lineHeight: 20 },
   row: { flexDirection: "row", marginTop: 20, gap: 12 },
   rowButton: {

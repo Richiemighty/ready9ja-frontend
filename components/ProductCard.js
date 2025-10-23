@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, Image, TouchableOpacity, StyleSheet } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import OnlineImage from "./OnlineImage";
 
 export default function ProductCard({ product, onPress }) {
   // product expected shape:
@@ -10,7 +11,7 @@ export default function ProductCard({ product, onPress }) {
     <TouchableOpacity style={styles.card} onPress={onPress}>
       <View style={styles.left}>
         {image ? (
-          <Image source={{ uri: image }} style={styles.image} />
+          <OnlineImage image={image} style={styles.image} />
         ) : (
           <View style={[styles.image, styles.imagePlaceholder]}>
             <Text style={{ color: "#999" }}>No image</Text>
@@ -22,9 +23,18 @@ export default function ProductCard({ product, onPress }) {
         <Text numberOfLines={2} style={styles.title}>
           {product.name}
         </Text>
-        <Text style={styles.seller}>{product.seller?.name || product.seller?.company || "Unknown seller"}</Text>
-        <Text style={styles.price}>₦{product.price?.toLocaleString?.() ?? product.price}</Text>
-        <Text style={[styles.stock, { color: product.stock > 0 ? "#2d8f4a" : "#d9534f" }]}>
+        <Text style={styles.seller}>
+          {product.seller?.name || product.seller?.company || "Unknown seller"}
+        </Text>
+        <Text style={styles.price}>
+          ₦{product.price?.toLocaleString?.() ?? product.price}
+        </Text>
+        <Text
+          style={[
+            styles.stock,
+            { color: product.stock > 0 ? "#2d8f4a" : "#d9534f" },
+          ]}
+        >
           {product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}
         </Text>
       </View>
@@ -43,7 +53,12 @@ const styles = StyleSheet.create({
     borderColor: "#eee",
   },
   left: { marginRight: 12 },
-  image: { width: 100, height: 100, borderRadius: 8, backgroundColor: "#f0f0f0" },
+  image: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    backgroundColor: "#f0f0f0",
+  },
   imagePlaceholder: { justifyContent: "center", alignItems: "center" },
   right: { flex: 1, justifyContent: "space-between" },
   title: { fontSize: 16, fontWeight: "600", color: "#111" },

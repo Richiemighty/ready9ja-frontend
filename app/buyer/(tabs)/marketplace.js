@@ -176,20 +176,23 @@
 //   categoryTextActive: { color: "#fff" },
 // });
 
-
+import api from "@/constants/api";
+import axios from "axios";
+import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
-  FlatList,
   TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
+  View,
 } from "react-native";
-import { useRouter } from "expo-router";
-import ProductCard from "../../../components/ProductCard";
 import HeaderRightProfile from "../../../components/HeaderRightProfile";
+import ProductCard from "../../../components/ProductCard";
 
 export default function Marketplace({ navigation }) {
   const router = useRouter();
@@ -211,59 +214,80 @@ export default function Marketplace({ navigation }) {
   const [categories, setCategories] = useState([]);
 
   // Mock data (since we’re not fetching from backend yet)
-  const mockProducts = [
-    {
-      id: 1,
-      name: "Wireless Headphones",
-      description: "Noise cancelling over-ear headphones",
-      category: "Electronics",
-      price: 25000,
-      stock: 10,
-      seller: { name: "AudioMax", rating: 4.5 },
-      image: "https://via.placeholder.com/200x200.png?text=Headphones",
-    },
-    {
-      id: 2,
-      name: "Classic Leather Wallet",
-      description: "Stylish and durable men’s wallet",
-      category: "Fashion",
-      price: 7500,
-      stock: 25,
-      seller: { name: "StyleHouse", rating: 4.3 },
-      image: "https://via.placeholder.com/200x200.png?text=Wallet",
-    },
-    {
-      id: 3,
-      name: "Bluetooth Speaker",
-      description: "Portable speaker with deep bass",
-      category: "Electronics",
-      price: 18000,
-      stock: 12,
-      seller: { name: "SoundVibe", rating: 4.7 },
-      image: "https://via.placeholder.com/200x200.png?text=Speaker",
-    },
-    {
-      id: 4,
-      name: "Organic Body Lotion",
-      description: "Moisturizing lotion for dry skin",
-      category: "Beauty",
-      price: 5500,
-      stock: 40,
-      seller: { name: "GlowCare", rating: 4.2 },
-      image: "https://via.placeholder.com/200x200.png?text=Lotion",
-    },
-  ];
+  // const mockProducts = [
+  //   {
+  //     id: 1,
+  //     name: "Wireless Headphones",
+  //     description: "Noise cancelling over-ear headphones",
+  //     category: "Electronics",
+  //     price: 25000,
+  //     stock: 10,
+  //     seller: { name: "AudioMax", rating: 4.5 },
+  //     image: "https://via.placeholder.com/200x200.png?text=Headphones",
+  //   },
+  //   {
+  //     id: 2,
+  //     name: "Classic Leather Wallet",
+  //     description: "Stylish and durable men’s wallet",
+  //     category: "Fashion",
+  //     price: 7500,
+  //     stock: 25,
+  //     seller: { name: "StyleHouse", rating: 4.3 },
+  //     image: "https://via.placeholder.com/200x200.png?text=Wallet",
+  //   },
+  //   {
+  //     id: 3,
+  //     name: "Bluetooth Speaker",
+  //     description: "Portable speaker with deep bass",
+  //     category: "Electronics",
+  //     price: 18000,
+  //     stock: 12,
+  //     seller: { name: "SoundVibe", rating: 4.7 },
+  //     image: "https://via.placeholder.com/200x200.png?text=Speaker",
+  //   },
+  //   {
+  //     id: 4,
+  //     name: "Organic Body Lotion",
+  //     description: "Moisturizing lotion for dry skin",
+  //     category: "Beauty",
+  //     price: 5500,
+  //     stock: 40,
+  //     seller: { name: "GlowCare", rating: 4.2 },
+  //     image: "https://via.placeholder.com/200x200.png?text=Lotion",
+  //   },
+  // ];
+
+  const fetchProducts = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get("/products");
+      if (response.status === 200) {
+        setProducts(response.data.products);
+      }
+    } catch (error) {
+      if (axios.isAxiosError(error)) alert(error.response?.data.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  useEffect(() => {
+    if (products.length === 0) return;
     // simulate loading
     setTimeout(() => {
-      setProducts(mockProducts);
-      const cats = Array.from(new Set(mockProducts.map((p) => p.category)));
+      setProducts(products);
+      const cats = Array.from(
+        new Set(products.flatMap((p) => p.categories.map((c) => c.name.trim())))
+      );
       setCategories(cats);
-      setFiltered(mockProducts);
+      setFiltered(products);
       setLoading(false);
     }, 1000);
-  }, []);
+  }, [products]);
 
   useEffect(() => {
     applyFilters();
@@ -272,17 +296,24 @@ export default function Marketplace({ navigation }) {
   const applyFilters = () => {
     let list = [...products];
 
-    if (query?.trim()) {
-      const q = query.toLowerCase();
+    const q = query.trim().toLowerCase();
+    const cat = categoryFilter?.toLowerCase();
+
+    // Filter by search query
+    if (q) {
       list = list.filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q)
+          (p.description?.toLowerCase().includes(q) ?? false)
       );
     }
 
-    if (categoryFilter) {
-      list = list.filter((p) => p.category === categoryFilter);
+    // Filter by category name
+    if (cat) {
+      list = list.filter((p) => {
+        if (!Array.isArray(p.categories)) return false;
+        return p.categories.some((c) => c.name.toLowerCase().includes(cat));
+      });
     }
 
     setFiltered(list);
@@ -291,12 +322,17 @@ export default function Marketplace({ navigation }) {
   const renderItem = ({ item }) => (
     <ProductCard
       product={item}
-      onPress={() => router.push(`/buyer/product/${item.id}`)}
+      onPress={() => router.push(`/buyer/product/${item.productId}`)}
     />
   );
 
   return (
     <View style={styles.container}>
+      <ScrollView
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={fetchProducts} />
+        }
+      ></ScrollView>
       <View style={styles.searchRow}>
         <TextInput
           placeholder="Search for products..."
@@ -325,9 +361,7 @@ export default function Marketplace({ navigation }) {
               (item === "All" && !categoryFilter);
             return (
               <TouchableOpacity
-                onPress={() =>
-                  setCategoryFilter(item === "All" ? null : item)
-                }
+                onPress={() => setCategoryFilter(item === "All" ? null : item)}
                 style={[
                   styles.categoryChip,
                   active && styles.categoryChipActive,
@@ -347,7 +381,11 @@ export default function Marketplace({ navigation }) {
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} size="large" color="#7C3AED" />
+        <ActivityIndicator
+          style={{ marginTop: 40 }}
+          size="large"
+          color="#7C3AED"
+        />
       ) : filtered.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={{ color: "#555" }}>No products found 😔</Text>
