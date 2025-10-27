@@ -1,19 +1,19 @@
-import React, { useState, useEffect } from "react";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
-  View,
+  Alert,
+  Animated,
+  Dimensions,
+  Easing,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  Alert,
-  StyleSheet,
-  Animated,
-  Easing,
-  Dimensions,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView
+  View
 } from "react-native";
-import { useRouter } from "expo-router";
 import { useAuth } from "../hooks/useAuth";
 
 const { width, height } = Dimensions.get("window");
@@ -78,8 +78,8 @@ export default function Login() {
       const role = res?.user?.roles?.[0]?.name; // ✅ extract role correctly
 
       if (role === "admin") router.push("/admin/dashboard");
-      else if (role === "seller") router.push("/seller/dashboard");
-      else router.replace("/buyer/(tabs)/marketplace"); // default user
+      else if (role === "Seller") router.push("/seller/dashboard");
+      else router.push("/buyer/(tabs)/marketplace"); 
 
       Alert.alert("Success", "Logged in successfully");
     } catch (err) {

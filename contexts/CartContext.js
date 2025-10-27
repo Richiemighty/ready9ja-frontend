@@ -1,60 +1,76 @@
-import React, { createContext, useEffect, useState } from "react";
+import React, { createContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export const CartContext = createContext({
-  cart: [],
-  favorites: [],
-  addToCart: () => {},
-  removeFromCart: () => {},
-  clearCart: () => {},
-  addToFavorites: () => {},
-  removeFromFavorites: () => {},
-});
+export const CartContext = createContext();
 
-export function CartProvider({ children }) {
+export const CartProvider = ({ children }) => {
   const [cart, setCart] = useState([]);
   const [favorites, setFavorites] = useState([]);
 
+  // --- Load cart & favorites from AsyncStorage on mount ---
   useEffect(() => {
     (async () => {
       try {
-        const c = await AsyncStorage.getItem("cart");
-        const f = await AsyncStorage.getItem("favorites");
-        if (c) setCart(JSON.parse(c));
-        if (f) setFavorites(JSON.parse(f));
+        const savedCart = await AsyncStorage.getItem("cart_items");
+        const savedFavs = await AsyncStorage.getItem("favorite_items");
+
+        if (savedCart) setCart(JSON.parse(savedCart));
+        if (savedFavs) setFavorites(JSON.parse(savedFavs));
       } catch (err) {
-        console.warn("Failed to load cart/favorites:", err.message);
+        console.warn("Failed to load persisted data:", err);
       }
     })();
   }, []);
 
+  // --- Persist changes automatically ---
   useEffect(() => {
-    AsyncStorage.setItem("cart", JSON.stringify(cart));
+    AsyncStorage.setItem("cart_items", JSON.stringify(cart));
   }, [cart]);
 
   useEffect(() => {
-    AsyncStorage.setItem("favorites", JSON.stringify(favorites));
+    AsyncStorage.setItem("favorite_items", JSON.stringify(favorites));
   }, [favorites]);
 
+  // --- CART FUNCTIONS ---
   const addToCart = (product) => {
     setCart((prev) => {
-      const exists = prev.find((p) => p.id === product.id);
-      if (exists) return prev.map((p) => (p.id === product.id ? { ...p, quantity: (p.quantity || 1) + 1 } : p));
-      return [...prev, { ...product, quantity: 1 }];
+      const exists = prev.find((item) => item.id === product.id);
+      if (exists) {
+        return prev.map((item) =>
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        );
+      } else {
+        return [...prev, { ...product, quantity: 1 }];
+      }
     });
   };
 
-  const removeFromCart = (id) => setCart((prev) => prev.filter((p) => p.id !== id));
-  const clearCart = () => setCart([]);
+  const removeFromCart = (productId) => {
+    setCart((prev) => prev.filter((item) => item.id !== productId));
+  };
 
+  const clearCart = () => {
+    setCart([]);
+  };
+
+  // --- FAVORITES FUNCTIONS ---
   const addToFavorites = (product) => {
     setFavorites((prev) => {
-      if (prev.find((p) => p.id === product.id)) return prev;
+      const exists = prev.some((item) => item.id === product.id);
+      if (exists) return prev;
       return [...prev, product];
     });
   };
 
-  const removeFromFavorites = (id) => setFavorites((prev) => prev.filter((p) => p.id !== id));
+  const removeFromFavorites = (productId) => {
+    setFavorites((prev) => prev.filter((item) => item.id !== productId));
+  };
+
+  const clearFavorites = () => {
+    setFavorites([]);
+  };
 
   return (
     <CartContext.Provider
@@ -66,9 +82,10 @@ export function CartProvider({ children }) {
         clearCart,
         addToFavorites,
         removeFromFavorites,
+        clearFavorites,
       }}
     >
       {children}
     </CartContext.Provider>
   );
-}
+};

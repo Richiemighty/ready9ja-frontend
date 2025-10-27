@@ -1,182 +1,3 @@
-// import React, { useEffect, useState } from "react";
-// import {
-//   View,
-//   Text,
-//   TextInput,
-//   FlatList,
-//   TouchableOpacity,
-//   ActivityIndicator,
-//   StyleSheet,
-// } from "react-native";
-// import api from "../../../constants/api";
-// import ProductCard from "../../../components/ProductCard";
-// import HeaderRightProfile from "../../../components/HeaderRightProfile";
-// import { useRouter } from "expo-router";
-
-// export default function Marketplace({ navigation }) {
-//   const router = useRouter();
-//   React.useLayoutEffect(() => {
-//     navigation?.setOptions?.({
-//       headerRight: () => <HeaderRightProfile />,
-//     });
-//   }, [navigation]);
-
-//   const [products, setProducts] = useState([]);
-//   const [filtered, setFiltered] = useState([]);
-//   const [query, setQuery] = useState("");
-//   const [categoryFilter, setCategoryFilter] = useState(null);
-//   const [loading, setLoading] = useState(false);
-//   const [categories, setCategories] = useState([]);
-
-//   useEffect(() => {
-//     loadProducts();
-//     loadCategories();
-//   }, []);
-
-//   useEffect(() => {
-//     applyFilters();
-//   }, [query, categoryFilter, products]);
-
-//   const loadProducts = async () => {
-//     setLoading(true);
-//     try {
-//       // Endpoint assumed: GET /products
-//       const res = await api.get("/products");
-//       setProducts(res.data || []);
-//     } catch (err) {
-//       console.warn("Failed to load products:", err.message);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const loadCategories = async () => {
-//     try {
-//       const res = await api.get("/categories");
-//       setCategories(res.data || []);
-//     } catch (err) {
-//       // if no categories endpoint, derive from products
-//       const setFromProducts = (arr) =>
-//         Array.from(new Set(arr.map((p) => p.category?.name || "Uncategorized")));
-//       setCategories(setFromProducts(products));
-//     }
-//   };
-
-//   const applyFilters = () => {
-//     let list = [...products];
-//     if (query?.trim()) {
-//       const q = query.toLowerCase();
-//       list = list.filter(
-//         (p) =>
-//           (p.name || "").toLowerCase().includes(q) ||
-//           (p.description || "").toLowerCase().includes(q)
-//       );
-//     }
-//     if (categoryFilter) {
-//       list = list.filter((p) => (p.category?.name || p.category) === categoryFilter);
-//     }
-//     setFiltered(list);
-//   };
-
-//   const renderItem = ({ item }) => (
-//     <ProductCard
-//       product={item}
-//       onPress={() => router.push(`/buyer/product/${item.id}`)}
-//     />
-//   );
-
-//   return (
-//     <View style={styles.container}>
-//       <View style={styles.searchRow}>
-//         <TextInput
-//           placeholder="Search products or keywords..."
-//           placeholderTextColor="#999"
-//           value={query}
-//           onChangeText={setQuery}
-//           style={styles.searchInput}
-//         />
-//         <TouchableOpacity
-//           style={styles.filterBtn}
-//           onPress={() =>
-//             setCategoryFilter(categoryFilter ? null : categories[0] || null)
-//           }
-//         >
-//           <Text style={{ color: "white" }}>Filter</Text>
-//         </TouchableOpacity>
-//       </View>
-
-//       <View style={styles.categoriesRow}>
-//         <FlatList
-//           data={["All", ...categories]}
-//           horizontal
-//           keyExtractor={(i, idx) => `${i}-${idx}`}
-//           showsHorizontalScrollIndicator={false}
-//           renderItem={({ item }) => {
-//             const active = (categoryFilter || "All") === item || (item === "All" && !categoryFilter);
-//             return (
-//               <TouchableOpacity
-//                 onPress={() => setCategoryFilter(item === "All" ? null : item)}
-//                 style={[styles.categoryChip, active && styles.categoryChipActive]}
-//               >
-//                 <Text style={active ? styles.categoryTextActive : styles.categoryText}>
-//                   {item}
-//                 </Text>
-//               </TouchableOpacity>
-//             );
-//           }}
-//         />
-//       </View>
-
-//       {loading ? (
-//         <ActivityIndicator style={{ marginTop: 40 }} size="large" color="#7C3AED" />
-//       ) : (
-//         <FlatList
-//           data={filtered}
-//           keyExtractor={(item) => String(item.id)}
-//           renderItem={renderItem}
-//           contentContainerStyle={{ paddingBottom: 120 }}
-//           showsVerticalScrollIndicator={false}
-//         />
-//       )}
-//     </View>
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   container: { flex: 1, padding: 12, backgroundColor: "#F8FAFC" },
-//   searchRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
-//   searchInput: {
-//     flex: 1,
-//     backgroundColor: "#fff",
-//     padding: 12,
-//     borderRadius: 10,
-//     borderWidth: 1,
-//     borderColor: "#eee",
-//   },
-//   filterBtn: {
-//     backgroundColor: "#7C3AED",
-//     paddingHorizontal: 14,
-//     justifyContent: "center",
-//     borderRadius: 10,
-//   },
-//   categoriesRow: { marginBottom: 10 },
-//   categoryChip: {
-//     paddingVertical: 6,
-//     paddingHorizontal: 12,
-//     backgroundColor: "#fff",
-//     borderRadius: 20,
-//     marginRight: 8,
-//     borderWidth: 1,
-//     borderColor: "#eee",
-//   },
-//   categoryChipActive: {
-//     backgroundColor: "#7C3AED",
-//   },
-//   categoryText: { color: "#333" },
-//   categoryTextActive: { color: "#fff" },
-// });
-
-
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -186,15 +7,24 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
+  Image,
+  Dimensions,
 } from "react-native";
+import api from "../../../constants/api";
 import { useRouter } from "expo-router";
-import ProductCard from "../../../components/ProductCard";
 import HeaderRightProfile from "../../../components/HeaderRightProfile";
+
+const { width } = Dimensions.get("window");
 
 export default function Marketplace({ navigation }) {
   const router = useRouter();
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [filtered, setFiltered] = useState([]);
+  const [query, setQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  // Set header profile icon
   React.useLayoutEffect(() => {
     navigation?.setOptions?.({
       headerRight: () => <HeaderRightProfile />,
@@ -202,101 +32,93 @@ export default function Marketplace({ navigation }) {
     });
   }, [navigation]);
 
-  // Local state
-  const [products, setProducts] = useState([]);
-  const [filtered, setFiltered] = useState([]);
-  const [query, setQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [categories, setCategories] = useState([]);
-
-  // Mock data (since we’re not fetching from backend yet)
-  const mockProducts = [
-    {
-      id: 1,
-      name: "Wireless Headphones",
-      description: "Noise cancelling over-ear headphones",
-      category: "Electronics",
-      price: 25000,
-      stock: 10,
-      seller: { name: "AudioMax", rating: 4.5 },
-      image: "https://via.placeholder.com/200x200.png?text=Headphones",
-    },
-    {
-      id: 2,
-      name: "Classic Leather Wallet",
-      description: "Stylish and durable men’s wallet",
-      category: "Fashion",
-      price: 7500,
-      stock: 25,
-      seller: { name: "StyleHouse", rating: 4.3 },
-      image: "https://via.placeholder.com/200x200.png?text=Wallet",
-    },
-    {
-      id: 3,
-      name: "Bluetooth Speaker",
-      description: "Portable speaker with deep bass",
-      category: "Electronics",
-      price: 18000,
-      stock: 12,
-      seller: { name: "SoundVibe", rating: 4.7 },
-      image: "https://via.placeholder.com/200x200.png?text=Speaker",
-    },
-    {
-      id: 4,
-      name: "Organic Body Lotion",
-      description: "Moisturizing lotion for dry skin",
-      category: "Beauty",
-      price: 5500,
-      stock: 40,
-      seller: { name: "GlowCare", rating: 4.2 },
-      image: "https://via.placeholder.com/200x200.png?text=Lotion",
-    },
-  ];
-
   useEffect(() => {
-    // simulate loading
-    setTimeout(() => {
-      setProducts(mockProducts);
-      const cats = Array.from(new Set(mockProducts.map((p) => p.category)));
-      setCategories(cats);
-      setFiltered(mockProducts);
-      setLoading(false);
-    }, 1000);
+    loadCategories();
+    loadProducts();
   }, []);
 
   useEffect(() => {
     applyFilters();
   }, [query, categoryFilter, products]);
 
+  // --- Load Products from API ---
+  const loadProducts = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/products");
+      const items = res.data?.products || [];
+      setProducts(items);
+      setFiltered(items);
+    } catch (err) {
+      console.warn("Failed to load products:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Load Categories from API ---
+  const loadCategories = async () => {
+    try {
+      const res = await api.get("/categories");
+      const cats = res.data?.categories || [];
+      setCategories(cats.length ? cats : ["General"]);
+    } catch (err) {
+      console.warn("Failed to load categories:", err.message);
+    }
+  };
+
+  // --- Apply Search and Category Filter ---
   const applyFilters = () => {
     let list = [...products];
-
-    if (query?.trim()) {
+    if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter(
         (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q)
+          (p.name || "").toLowerCase().includes(q) ||
+          (p.description || "").toLowerCase().includes(q)
       );
     }
-
     if (categoryFilter) {
-      list = list.filter((p) => p.category === categoryFilter);
+      list = list.filter((p) =>
+        p.categories?.some((c) => c.name === categoryFilter)
+      );
     }
-
     setFiltered(list);
   };
 
+  // --- Render Each Product ---
   const renderItem = ({ item }) => (
-    <ProductCard
-      product={item}
+    <TouchableOpacity
+      style={styles.card}
       onPress={() => router.push(`/buyer/product/${item.id}`)}
-    />
+    >
+      <Image
+        source={{
+          uri:
+            item.images?.[0] ||
+            "https://via.placeholder.com/150?text=No+Image",
+        }}
+        style={styles.image}
+      />
+      <View style={{ padding: 10 }}>
+        <Text style={styles.name} numberOfLines={1}>
+          {item.name}
+        </Text>
+        <Text style={styles.desc} numberOfLines={2}>
+          {item.description}
+        </Text>
+        <Text style={styles.price}>₦{item.price?.toLocaleString()}</Text>
+        <Text style={styles.stock}>
+          {item.stock > 0 ? "In Stock ✅" : "Out of Stock ❌"}
+        </Text>
+      </View>
+    </TouchableOpacity>
   );
 
+  // --- UI ---
   return (
     <View style={styles.container}>
+      {/* Search + Filter Row */}
       <View style={styles.searchRow}>
         <TextInput
           placeholder="Search for products..."
@@ -307,17 +129,22 @@ export default function Marketplace({ navigation }) {
         />
         <TouchableOpacity
           style={styles.filterBtn}
-          onPress={() => setCategoryFilter(null)}
+          onPress={() =>
+            setCategoryFilter(categoryFilter ? null : categories[0])
+          }
         >
-          <Text style={{ color: "white", fontWeight: "bold" }}>Clear</Text>
+          <Text style={styles.filterText}>
+            {categoryFilter ? "Clear" : "Filter"}
+          </Text>
         </TouchableOpacity>
       </View>
 
+      {/* Categories Row */}
       <View style={styles.categoriesRow}>
         <FlatList
-          data={["All", ...categories]}
+          data={["All", ...categories.map((c) => c.name || c)]}
           horizontal
-          keyExtractor={(i, idx) => `${i}-${idx}`}
+          keyExtractor={(item, idx) => `${item}-${idx}`}
           showsHorizontalScrollIndicator={false}
           renderItem={({ item }) => {
             const active =
@@ -346,19 +173,26 @@ export default function Marketplace({ navigation }) {
         />
       </View>
 
+      {/* Product List */}
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} size="large" color="#7C3AED" />
+        <ActivityIndicator
+          style={{ marginTop: 40 }}
+          size="large"
+          color="#7C3AED"
+        />
       ) : filtered.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={{ color: "#555" }}>No products found 😔</Text>
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>No products found 😔</Text>
         </View>
       ) : (
         <FlatList
           data={filtered}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 120 }}
+          numColumns={2}
+          columnWrapperStyle={{ justifyContent: "space-between" }}
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 120 }}
         />
       )}
     </View>
@@ -366,34 +200,98 @@ export default function Marketplace({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 12, backgroundColor: "#F8FAFC" },
-  searchRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
+  container: { flex: 1, backgroundColor: "#F8FAFC", padding: 10 },
+  searchRow: {
+    flexDirection: "row",
+    marginBottom: 10,
+    gap: 8,
+  },
   searchInput: {
     flex: 1,
     backgroundColor: "#fff",
-    padding: 12,
-    borderRadius: 10,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 16,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: "#E5E7EB",
   },
   filterBtn: {
     backgroundColor: "#7C3AED",
-    paddingHorizontal: 14,
-    justifyContent: "center",
     borderRadius: 10,
+    justifyContent: "center",
+    paddingHorizontal: 14,
   },
-  categoriesRow: { marginBottom: 10 },
+  filterText: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  categoriesRow: {
+    marginBottom: 12,
+  },
   categoryChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
     backgroundColor: "#fff",
     borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: "#E5E7EB",
   },
-  categoryChipActive: { backgroundColor: "#7C3AED" },
-  categoryText: { color: "#333" },
-  categoryTextActive: { color: "#fff" },
-  emptyState: { flex: 1, justifyContent: "center", alignItems: "center" },
+  categoryChipActive: {
+    backgroundColor: "#7C3AED",
+  },
+  categoryText: {
+    color: "#111",
+  },
+  categoryTextActive: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  card: {
+    width: width / 2 - 20,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    overflow: "hidden",
+    marginBottom: 15,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+  },
+  image: {
+    width: "100%",
+    height: 120,
+    backgroundColor: "#F3F4F6",
+  },
+  name: {
+    fontWeight: "bold",
+    fontSize: 15,
+    color: "#111",
+  },
+  desc: {
+    color: "#555",
+    fontSize: 13,
+    marginTop: 2,
+  },
+  price: {
+    color: "#7C3AED",
+    fontWeight: "bold",
+    marginTop: 6,
+  },
+  stock: {
+    fontSize: 13,
+    color: "#16A34A",
+    marginTop: 2,
+  },
+  emptyBox: {
+    flex: 1,
+    alignItems: "center",
+    marginTop: 50,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#6B7280",
+  },
 });
