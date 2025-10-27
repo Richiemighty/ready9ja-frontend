@@ -16,18 +16,17 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
+  Modal, Platform, ScrollView,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  View,
+  View
 } from "react-native";
 import { useAuth } from "../../../hooks/useAuth";
+
 
 export default function Profile() {
   const router = useRouter();
@@ -149,30 +148,48 @@ export default function Profile() {
 
   const updateUserInDatabase = async (userData) => {
     try {
-      // Replace with your actual API endpoint
-      const response = await fetch('https://ready9ja-api.onrender.com/api/vi/profile', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${userData.token}`,
-        },
-        body: JSON.stringify({
-          firstname: userData.firstname,
-          lastname: userData.lastname,
-          phone: userData.phone,
-          address: userData.address,
-          email: userData.email,
-        }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log('User updated in database:', result);
-        return true;
+      // Cross-platform get token
+      let token;
+      if (Platform.OS === "web") {
+        token = await AsyncStorage.getItem("access_token");
+      } else {
+        token = await SecureStore.getItemAsync("access_token");
       }
-      return false;
+
+      if (!token) {
+        console.warn("⚠️ No token found in storage!");
+        return false;
+      }
+
+      const response = await fetch(
+        "https://ready9ja-api.onrender.com/api/v1/profile",
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            firstname: userData.firstname,
+            lastname: userData.lastname,
+            email: userData.email,
+            phone: userData.phone,
+            address: userData.address,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Profile update failed:", errorText);
+        return false;
+      }
+
+      const result = await response.json();
+      console.log("✅ User updated successfully:", result);
+      return true;
     } catch (error) {
-      console.error('Database update error:', error);
+      console.error("❌ Database update error:", error);
       return false;
     }
   };

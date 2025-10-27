@@ -1,18 +1,19 @@
+import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  Dimensions,
+  FlatList,
+  Image,
+  RefreshControl,
+  StyleSheet,
   Text,
   TextInput,
-  FlatList,
   TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
-  Image,
-  Dimensions,
+  View,
 } from "react-native";
-import api from "../../../constants/api";
-import { useRouter } from "expo-router";
 import HeaderRightProfile from "../../../components/HeaderRightProfile";
+import api from "../../../constants/api";
 
 const { width } = Dimensions.get("window");
 
@@ -24,6 +25,7 @@ export default function Marketplace({ navigation }) {
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   React.useLayoutEffect(() => {
     navigation?.setOptions?.({
@@ -51,6 +53,7 @@ export default function Marketplace({ navigation }) {
       setFiltered(items);
     } catch (err) {
       console.warn("Failed to load products:", err.message);
+      Alert.alert("Error", "Failed to load products");
     } finally {
       setLoading(false);
     }
@@ -61,7 +64,7 @@ export default function Marketplace({ navigation }) {
     try {
       const res = await api.get("/categories");
       const cats = res.data?.categories || [];
-      setCategories(cats.length ? cats : ["General"]);
+      setCategories(cats);
     } catch (err) {
       console.warn("Failed to load categories:", err.message);
     }
@@ -70,27 +73,48 @@ export default function Marketplace({ navigation }) {
   // --- Apply Search and Category Filter ---
   const applyFilters = () => {
     let list = [...products];
+    
+    // Search filter
     if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter(
         (p) =>
           (p.name || "").toLowerCase().includes(q) ||
-          (p.description || "").toLowerCase().includes(q)
+          (p.description || "").toLowerCase().includes(q) ||
+          (p.tags || "").toLowerCase().includes(q)
       );
     }
-    if (categoryFilter) {
+    
+    // Category filter
+    if (categoryFilter && categoryFilter !== "All") {
       list = list.filter((p) =>
         p.categories?.some((c) => c.name === categoryFilter)
       );
     }
+    
     setFiltered(list);
+  };
+
+  // --- Pull to refresh ---
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadProducts();
+    setRefreshing(false);
+  };
+
+  // --- Extract unique categories from products ---
+  const getUniqueCategories = () => {
+    const allCategories = products.flatMap(product => 
+      product.categories?.map(cat => cat.name) || []
+    );
+    return [...new Set(allCategories)];
   };
 
   // --- Render Each Product ---
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => router.push(`/buyer/product/${item.id}`)}
+      onPress={() => router.push(`/buyer/product/${item.productId}`)}
     >
       <Image
         source={{
@@ -99,21 +123,52 @@ export default function Marketplace({ navigation }) {
             "https://via.placeholder.com/150?text=No+Image",
         }}
         style={styles.image}
+        resizeMode="cover"
       />
-      <View style={{ padding: 10 }}>
+      <View style={styles.cardContent}>
         <Text style={styles.name} numberOfLines={1}>
           {item.name}
         </Text>
         <Text style={styles.desc} numberOfLines={2}>
           {item.description}
         </Text>
+        
+        {/* Categories Tags */}
+        {item.categories && item.categories.length > 0 && (
+          <View style={styles.categoryTags}>
+            {item.categories.slice(0, 2).map((category, index) => (
+              <View key={index} style={styles.categoryTag}>
+                <Text style={styles.categoryTagText}>{category.name}</Text>
+              </View>
+            ))}
+            {item.categories.length > 2 && (
+              <View style={styles.categoryTag}>
+                <Text style={styles.categoryTagText}>+{item.categories.length - 2}</Text>
+              </View>
+            )}
+          </View>
+        )}
+        
         <Text style={styles.price}>₦{item.price?.toLocaleString()}</Text>
-        <Text style={styles.stock}>
-          {item.stock > 0 ? "In Stock ✅" : "Out of Stock ❌"}
-        </Text>
+        <View style={styles.stockRow}>
+          <Text style={[
+            styles.stock,
+            { color: item.stock > 0 ? "#16A34A" : "#DC2626" }
+          ]}>
+            {item.stock > 0 ? `${item.stock} in stock ✅` : "Out of stock ❌"}
+          </Text>
+          {item.discount > 0 && (
+            <View style={styles.discountBadge}>
+              <Text style={styles.discountText}>{item.discount}% OFF</Text>
+            </View>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
+
+  // --- Available categories for filtering ---
+  const availableCategories = ["All", ...getUniqueCategories()];
 
   // --- UI ---
   return (
@@ -129,9 +184,7 @@ export default function Marketplace({ navigation }) {
         />
         <TouchableOpacity
           style={styles.filterBtn}
-          onPress={() =>
-            setCategoryFilter(categoryFilter ? null : categories[0])
-          }
+          onPress={() => setCategoryFilter(categoryFilter ? null : "All")}
         >
           <Text style={styles.filterText}>
             {categoryFilter ? "Clear" : "Filter"}
@@ -140,38 +193,36 @@ export default function Marketplace({ navigation }) {
       </View>
 
       {/* Categories Row */}
-      <View style={styles.categoriesRow}>
-        <FlatList
-          data={["All", ...categories.map((c) => c.name || c)]}
-          horizontal
-          keyExtractor={(item, idx) => `${item}-${idx}`}
-          showsHorizontalScrollIndicator={false}
-          renderItem={({ item }) => {
-            const active =
-              (categoryFilter || "All") === item ||
-              (item === "All" && !categoryFilter);
-            return (
-              <TouchableOpacity
-                onPress={() =>
-                  setCategoryFilter(item === "All" ? null : item)
-                }
-                style={[
-                  styles.categoryChip,
-                  active && styles.categoryChipActive,
-                ]}
-              >
-                <Text
-                  style={
-                    active ? styles.categoryTextActive : styles.categoryText
-                  }
+      {availableCategories.length > 1 && (
+        <View style={styles.categoriesRow}>
+          <FlatList
+            data={availableCategories}
+            horizontal
+            keyExtractor={(item, idx) => `${item}-${idx}`}
+            showsHorizontalScrollIndicator={false}
+            renderItem={({ item }) => {
+              const active = categoryFilter === item || (item === "All" && !categoryFilter);
+              return (
+                <TouchableOpacity
+                  onPress={() => setCategoryFilter(item === "All" ? null : item)}
+                  style={[
+                    styles.categoryChip,
+                    active && styles.categoryChipActive,
+                  ]}
                 >
-                  {item}
-                </Text>
-              </TouchableOpacity>
-            );
-          }}
-        />
-      </View>
+                  <Text
+                    style={
+                      active ? styles.categoryTextActive : styles.categoryText
+                    }
+                  >
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      )}
 
       {/* Product List */}
       {loading ? (
@@ -183,16 +234,27 @@ export default function Marketplace({ navigation }) {
       ) : filtered.length === 0 ? (
         <View style={styles.emptyBox}>
           <Text style={styles.emptyText}>No products found 😔</Text>
+          <Text style={styles.emptySubtext}>
+            {query || categoryFilter ? "Try adjusting your search or filters" : "Check back later for new products"}
+          </Text>
         </View>
       ) : (
         <FlatList
           data={filtered}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={(item) => item.productId}
           renderItem={renderItem}
           numColumns={2}
           columnWrapperStyle={{ justifyContent: "space-between" }}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 120 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#7C3AED"]}
+              tintColor="#7C3AED"
+            />
+          }
         />
       )}
     </View>
@@ -265,6 +327,9 @@ const styles = StyleSheet.create({
     height: 120,
     backgroundColor: "#F3F4F6",
   },
+  cardContent: {
+    padding: 10,
+  },
   name: {
     fontWeight: "bold",
     fontSize: 15,
@@ -274,24 +339,65 @@ const styles = StyleSheet.create({
     color: "#555",
     fontSize: 13,
     marginTop: 2,
+    marginBottom: 8,
+  },
+  categoryTags: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 8,
+    gap: 4,
+  },
+  categoryTag: {
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  categoryTagText: {
+    fontSize: 10,
+    color: "#6B7280",
   },
   price: {
     color: "#7C3AED",
     fontWeight: "bold",
-    marginTop: 6,
+    fontSize: 16,
+  },
+  stockRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4,
   },
   stock: {
-    fontSize: 13,
-    color: "#16A34A",
-    marginTop: 2,
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  discountBadge: {
+    backgroundColor: "#DC2626",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  discountText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "bold",
   },
   emptyBox: {
     flex: 1,
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 50,
   },
   emptyText: {
     fontSize: 16,
     color: "#6B7280",
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    textAlign: "center",
   },
 });
