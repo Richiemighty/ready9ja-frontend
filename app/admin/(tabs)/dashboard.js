@@ -1,6 +1,6 @@
-import { View, Text, Button, StyleSheet, Alert } from "react-native";
 import { useRouter } from "expo-router";
-import { useAuth } from "../../hooks/useAuth";
+import { Alert, Button, StyleSheet, Text, View } from "react-native";
+import { useAuth } from "../../../hooks/useAuth";
 
 export default function AdminDashboard() {
   const router = useRouter();

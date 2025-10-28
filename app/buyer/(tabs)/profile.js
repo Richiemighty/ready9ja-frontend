@@ -11,7 +11,6 @@ import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Image,
   Keyboard,
@@ -27,10 +26,9 @@ import {
 } from "react-native";
 import { useAuth } from "../../../hooks/useAuth";
 
-
 export default function Profile() {
   const router = useRouter();
-  const { logout, updateUserProfile } = useAuth();
+  const { logout, updateUserProfile, switchRole, getActiveRole } = useAuth();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState(true);
@@ -41,10 +39,16 @@ export default function Profile() {
   const [editValue, setEditValue] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [tempUser, setTempUser] = useState(null);
-  const [isSeller, setIsSeller] = useState(false); // Track if user is already a seller
+  const [isSeller, setIsSeller] = useState(false);
+  const [currentRole, setCurrentRole] = useState("user");
+  const [showRoleSwitch, setShowRoleSwitch] = useState(false);
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
 
-  // Animation values
+  // Animation values - FIXED: Start with modal hidden
   const slideAnim = useState(new Animated.Value(300))[0];
+  const roleSwitchAnim = useState(new Animated.Value(-300))[0];
+  const alertAnim = useState(new Animated.Value(-100))[0];
 
   // cross-platform getter and setter
   const getItem = async (key) => {
@@ -59,7 +63,48 @@ export default function Profile() {
 
   useEffect(() => {
     loadUserData();
+    loadCurrentRole();
   }, []);
+
+  // IMPROVED Custom Alert System with better mobile support
+  const showCustomAlert = (title, message, type = "success", options = {}) => {
+    setAlertConfig({
+      title,
+      message,
+      type,
+      icon: type === "success" ? "checkmark-circle" : 
+            type === "error" ? "close-circle" : 
+            type === "warning" ? "warning" : "information",
+      ...options
+    });
+    setShowAlert(true);
+    
+    Animated.timing(alertAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+
+    // Auto hide after 3 seconds unless it's a confirmation alert
+    if (!options.showActions) {
+      setTimeout(() => {
+        hideAlert();
+      }, 3000);
+    }
+  };
+
+  const hideAlert = () => {
+    Animated.timing(alertAnim, {
+      toValue: -100,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowAlert(false);
+      if (alertConfig.onConfirm) {
+        alertConfig.onConfirm();
+      }
+    });
+  };
 
   const loadUserData = async () => {
     try {
@@ -70,17 +115,32 @@ export default function Profile() {
         setTempUser(parsed.user);
         // Check if user is already a seller
         setIsSeller(parsed.user?.isSeller || false);
+        // Check if user has multiple roles - JUST SET THE CAPABILITY, DON'T SHOW MODAL
+        // Remove this line: setShowRoleSwitch(parsed.user?.roles?.length > 1 || false);
+        
+        // Instead, we'll just log it for debugging
+        const hasMultipleRoles = parsed.user?.roles?.length > 1;
+        console.log("User has multiple roles:", hasMultipleRoles);
       }
     } catch (err) {
       console.warn("Error loading profile:", err);
+      showCustomAlert("Error", "Failed to load profile data", "error");
     } finally {
       setLoading(false);
     }
   };
 
+  const loadCurrentRole = async () => {
+    try {
+      const role = await getActiveRole();
+      setCurrentRole(role || "user");
+    } catch (err) {
+      console.warn("Error loading current role:", err);
+    }
+  };
+
   const openEditModal = (field, value = "") => {
     setEditingField(field);
-    // Handle null or undefined values by converting to empty string
     setEditValue(value || "");
     setEditModalVisible(true);
     Animated.timing(slideAnim, {
@@ -91,7 +151,7 @@ export default function Profile() {
   };
 
   const closeEditModal = () => {
-    Keyboard.dismiss(); // Dismiss keyboard when closing modal
+    Keyboard.dismiss();
     Animated.timing(slideAnim, {
       toValue: 300,
       duration: 300,
@@ -103,52 +163,75 @@ export default function Profile() {
     });
   };
 
-  const handleSave = async () => {
-    // Safe check for editValue
-    if (!editValue || !editValue.trim() || !editingField) return;
+  // FIXED: Role modal animation - only show when explicitly opened
+  const openRoleSwitch = () => {
+    setShowRoleSwitch(true);
+    // Reset animation value first
+    roleSwitchAnim.setValue(-300);
+    Animated.timing(roleSwitchAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
 
-    setIsSaving(true);
+  const closeRoleSwitch = () => {
+    Animated.timing(roleSwitchAnim, {
+      toValue: -300,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowRoleSwitch(false);
+    });
+  };
+
+  // FIXED: Improved role switching with better mobile alert support
+  const handleRoleSwitch = async (newRole) => {
     try {
-      // Update local state first
-      const updatedUser = {
-        ...tempUser,
-        [editingField]: editValue.trim()
-      };
-
-      setTempUser(updatedUser);
-      setUser(updatedUser);
-
-      // Update in secure storage
-      const userData = await getItem("user_data");
-      if (userData) {
-        const parsed = JSON.parse(userData);
-        parsed.user = updatedUser;
-        await setItem("user_data", JSON.stringify(parsed));
-      }
-
-      // Update in database via API
-      const updateSuccess = await updateUserInDatabase(updatedUser);
+      await switchRole(newRole);
+      setCurrentRole(newRole);
+      closeRoleSwitch();
       
-      if (updateSuccess) {
-        Alert.alert("Success", "Profile updated successfully!");
-      } else {
-        Alert.alert("Error", "Failed to update profile. Please try again.");
-        // Revert local changes if API call fails
-        await loadUserData();
+      // Determine the correct redirect path based on role
+      let redirectPath;
+      switch(newRole) {
+        case 'seller':
+          redirectPath = '/seller/(tabs)/dashboard';
+          break;
+        case 'admin':
+          redirectPath = '/admin/(tabs)/dashboard';  
+          break;
+        case 'user':
+        default:
+          redirectPath = '/buyer/(tabs)/marketplace';
       }
+      
+      // IMPROVED: Show success message with better mobile compatibility
+      setTimeout(() => {
+        showCustomAlert(
+          "🎭 Role Switched", 
+          `You are now viewing the ${getRoleDisplayName(newRole)} dashboard`,
+          "success",
+          {
+            showActions: true,
+            confirmText: "Continue",
+            onConfirm: () => {
+              console.log("Redirecting to:", redirectPath);
+              router.replace(redirectPath);
+            }
+          }
+        );
+      }, 100); // Small delay to ensure modal is closed
+      
     } catch (error) {
-      console.error("Error updating profile:", error);
-      Alert.alert("Error", "Failed to update profile. Please try again.");
-      await loadUserData();
-    } finally {
-      setIsSaving(false);
-      closeEditModal();
+      console.error("Error switching role:", error);
+      showCustomAlert("Error", "Failed to switch role. Please try again.", "error");
     }
   };
 
-  const updateUserInDatabase = async (userData) => {
+  // SIMPLIFIED PROFILE UPDATE FUNCTION
+  const updateProfileDirectly = async (field, value) => {
     try {
-      // Cross-platform get token
       let token;
       if (Platform.OS === "web") {
         token = await AsyncStorage.getItem("access_token");
@@ -157,9 +240,15 @@ export default function Profile() {
       }
 
       if (!token) {
-        console.warn("⚠️ No token found in storage!");
+        console.warn("⚠️ No token found");
         return false;
       }
+
+      const payload = {
+        [field]: value
+      };
+
+      console.log("📤 Sending PATCH to /profile with:", payload);
 
       const response = await fetch(
         "https://ready9ja-api.onrender.com/api/v1/profile",
@@ -169,37 +258,83 @@ export default function Profile() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            firstname: userData.firstname,
-            lastname: userData.lastname,
-            email: userData.email,
-            phone: userData.phone,
-            address: userData.address,
-          }),
+          body: JSON.stringify(payload),
         }
       );
 
+      const responseText = await response.text();
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Profile update failed:", errorText);
+        console.error("❌ Update failed with status:", response.status);
+        
+        // Check if it's the specific UUID error
+        if (responseText.includes('d86a837b-c370-48bb-82e2-5540025d9133')) {
+          console.error("🚨 BACKEND BUG DETECTED: Wrong UUID being processed");
+          showCustomAlert(
+            "Temporary Issue", 
+            "Profile updates are temporarily unavailable due to a server issue. Our team has been notified and is working on a fix.",
+            "error"
+          );
+        }
+        
         return false;
       }
 
-      const result = await response.json();
-      console.log("✅ User updated successfully:", result);
+      console.log("✅ Update successful");
       return true;
     } catch (error) {
-      console.error("❌ Database update error:", error);
+      console.error("❌ Update error:", error);
       return false;
+    }
+  };
+
+  // SIMPLIFIED HANDLE SAVE
+  const handleSave = async () => {
+    if (!editValue || !editValue.trim() || !editingField) {
+      showCustomAlert("Validation Error", "Please enter a valid value", "warning");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      console.log("🔄 Updating field:", editingField, "with value:", editValue.trim());
+      
+      const updateSuccess = await updateProfileDirectly(editingField, editValue.trim());
+      
+      if (updateSuccess) {
+        // Update local state only if API call succeeds
+        const updatedUser = {
+          ...tempUser,
+          [editingField]: editValue.trim()
+        };
+        setTempUser(updatedUser);
+        setUser(updatedUser);
+
+        // Update local storage
+        const userData = await getItem("user_data");
+        if (userData) {
+          const parsed = JSON.parse(userData);
+          parsed.user = updatedUser;
+          await setItem("user_data", JSON.stringify(parsed));
+        }
+
+        showCustomAlert("Success", "Profile updated successfully!", "success");
+      }
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      showCustomAlert("Error", "Failed to update profile. Please try again.", "error");
+    } finally {
+      setIsSaving(false);
+      closeEditModal();
     }
   };
 
   const handleBecomeSeller = () => {
     if (isSeller) {
-      Alert.alert(
-        "Seller Account",
+      showCustomAlert(
+        "🏪 Seller Account", 
         "You are already a registered seller!",
-        [{ text: "OK" }]
+        "info"
       );
     } else {
       router.push("/buyer/become-seller");
@@ -207,20 +342,19 @@ export default function Profile() {
   };
 
   const handleLogout = async () => {
-    Alert.alert(
-      "Logout",
+    showCustomAlert(
+      "🚪 Logout", 
       "Are you sure you want to logout?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Logout", 
-          style: "destructive",
-          onPress: async () => {
-            await logout();
-            router.replace("/login");
-          }
+      "warning",
+      {
+        showActions: true,
+        confirmText: "Logout",
+        cancelText: "Cancel",
+        onConfirm: async () => {
+          await logout();
+          router.replace("/login");
         }
-      ]
+      }
     );
   };
 
@@ -252,9 +386,26 @@ export default function Profile() {
     return 'default';
   };
 
-  // Safe value display function
   const displayValue = (value) => {
     return value || "Not provided";
+  };
+
+  const getRoleDisplayName = (role) => {
+    const roleNames = {
+      user: "Buyer",
+      seller: "Seller",
+      admin: "Administrator"
+    };
+    return roleNames[role] || role;
+  };
+
+  const getRoleIcon = (role) => {
+    const icons = {
+      user: "person-outline",
+      seller: "storefront-outline",
+      admin: "shield-outline"
+    };
+    return icons[role] || "person-outline";
   };
 
   const menuItems = [
@@ -408,6 +559,81 @@ export default function Profile() {
 
   return (
     <View style={styles.container}>
+      {/* IMPROVED Custom Alert - Better mobile support */}
+      <Modal
+        visible={showAlert}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={hideAlert}
+        statusBarTranslucent={true}
+      >
+        <TouchableWithoutFeedback onPress={alertConfig.showActions ? undefined : hideAlert}>
+          <View style={styles.alertOverlay}>
+            <Animated.View 
+              style={[
+                styles.alertContainer,
+                { 
+                  transform: [{ translateY: alertAnim }],
+                  backgroundColor: alertConfig.type === "success" ? "#F0F9FF" : 
+                                 alertConfig.type === "error" ? "#FEF2F2" : 
+                                 alertConfig.type === "warning" ? "#FFFBEB" : "#F0F9FF"
+                }
+              ]}
+            >
+              <View style={[
+                styles.alertIconContainer,
+                { backgroundColor: alertConfig.type === "success" ? "#10B981" : 
+                                 alertConfig.type === "error" ? "#DC2626" : 
+                                 alertConfig.type === "warning" ? "#F59E0B" : "#7C3AED" }
+              ]}>
+                <Ionicons 
+                  name={alertConfig.icon} 
+                  size={24} 
+                  color="#FFFFFF" 
+                />
+              </View>
+              
+              <View style={styles.alertContent}>
+                <Text style={styles.alertTitle}>{alertConfig.title}</Text>
+                <Text style={styles.alertMessage}>{alertConfig.message}</Text>
+                
+                {alertConfig.showActions && (
+                  <View style={styles.alertActions}>
+                    {alertConfig.cancelText && (
+                      <TouchableOpacity 
+                        style={styles.alertCancelButton}
+                        onPress={hideAlert}
+                      >
+                        <Text style={styles.alertCancelText}>{alertConfig.cancelText}</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity 
+                      style={[
+                        styles.alertConfirmButton,
+                        { backgroundColor: alertConfig.type === "success" ? "#10B981" : 
+                                         alertConfig.type === "error" ? "#DC2626" : 
+                                         alertConfig.type === "warning" ? "#F59E0B" : "#7C3AED" }
+                      ]}
+                      onPress={hideAlert}
+                    >
+                      <Text style={styles.alertConfirmText}>
+                        {alertConfig.confirmText || "OK"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+              
+              {!alertConfig.showActions && (
+                <TouchableOpacity onPress={hideAlert} style={styles.alertCloseButton}>
+                  <Ionicons name="close" size={20} color="#6B7280" />
+                </TouchableOpacity>
+              )}
+            </Animated.View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
       {/* HEADER SECTION */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
@@ -422,9 +648,20 @@ export default function Profile() {
           />
           <View style={styles.userInfo}>
             <Text style={styles.name}>{user.firstname} {user.lastname}</Text>
-            <Text style={styles.role}>
-              {isSeller ? "Verified Seller" : (user.roles?.[0]?.description || "Premium Member")}
-            </Text>
+            <View style={styles.roleContainer}>
+              <Text style={styles.role}>
+                {getRoleDisplayName(currentRole)}
+              </Text>
+              {user.roles?.length > 1 && (
+                <TouchableOpacity 
+                  style={styles.roleSwitchButton}
+                  onPress={openRoleSwitch}
+                >
+                  <Feather name="repeat" size={14} color="#7C3AED" />
+                  <Text style={styles.roleSwitchText}>Switch</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <View style={styles.statsContainer}>
               <View style={styles.statItem}>
                 <Text style={styles.statNumber}>5</Text>
@@ -452,9 +689,10 @@ export default function Profile() {
         </TouchableOpacity>
       </View>
 
+      {/* MAIN CONTENT SCROLLVIEW */}
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* SELLER REGISTRATION CTA */}
-        {!isSeller && (
+        {/* SELLER REGISTRATION CTA - Only show for users with "user" role only */}
+        {!isSeller && currentRole === 'user' && user.roles?.length === 1 && (
           <View style={styles.section}>
             <TouchableOpacity 
               style={styles.sellerCtaCard}
@@ -481,18 +719,99 @@ export default function Profile() {
           </View>
         )}
 
-        {/* ACCOUNT SECTION */}
+        {/* PERSONAL INFORMATION SECTION */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
+          <Text style={styles.sectionTitle}>Personal Information</Text>
+          <View style={styles.card}>
+            {/* First Name */}
+            <TouchableOpacity 
+              style={styles.infoRow}
+              onPress={() => openEditModal('firstname', user.firstname)}
+            >
+              <View style={styles.infoLeft}>
+                {getIconComponent("feather", "user", "#6B7280", 18)}
+                <Text style={styles.infoLabel}>First Name</Text>
+              </View>
+              <View style={styles.infoRight}>
+                <Text style={styles.infoValue}>{displayValue(user.firstname)}</Text>
+                <Feather name="edit-2" size={16} color="#9CA3AF" />
+              </View>
+            </TouchableOpacity>
+
+            {/* Last Name */}
+            <TouchableOpacity 
+              style={styles.infoRow}
+              onPress={() => openEditModal('lastname', user.lastname)}
+            >
+              <View style={styles.infoLeft}>
+                {getIconComponent("feather", "user", "#6B7280", 18)}
+                <Text style={styles.infoLabel}>Last Name</Text>
+              </View>
+              <View style={styles.infoRight}>
+                <Text style={styles.infoValue}>{displayValue(user.lastname)}</Text>
+                <Feather name="edit-2" size={16} color="#9CA3AF" />
+              </View>
+            </TouchableOpacity>
+
+            {/* Email */}
+            <TouchableOpacity 
+              style={styles.infoRow}
+              onPress={() => openEditModal('email', user.email)}
+            >
+              <View style={styles.infoLeft}>
+                {getIconComponent("feather", "mail", "#6B7280", 18)}
+                <Text style={styles.infoLabel}>Email Address</Text>
+              </View>
+              <View style={styles.infoRight}>
+                <Text style={styles.infoValue}>{displayValue(user.email)}</Text>
+                <Feather name="edit-2" size={16} color="#9CA3AF" />
+              </View>
+            </TouchableOpacity>
+
+            {/* Phone */}
+            <TouchableOpacity 
+              style={styles.infoRow}
+              onPress={() => openEditModal('phone', user.phone)}
+            >
+              <View style={styles.infoLeft}>
+                {getIconComponent("feather", "phone", "#6B7280", 18)}
+                <Text style={styles.infoLabel}>Phone Number</Text>
+              </View>
+              <View style={styles.infoRight}>
+                <Text style={styles.infoValue}>{displayValue(user.phone)}</Text>
+                <Feather name="edit-2" size={16} color="#9CA3AF" />
+              </View>
+            </TouchableOpacity>
+
+            {/* Address */}
+            <TouchableOpacity 
+              style={styles.infoRow}
+              onPress={() => openEditModal('address', user.address)}
+            >
+              <View style={styles.infoLeft}>
+                {getIconComponent("feather", "map-pin", "#6B7280", 18)}
+                <Text style={styles.infoLabel}>Address</Text>
+              </View>
+              <View style={styles.infoRight}>
+                <Text style={styles.infoValue}>{displayValue(user.address)}</Text>
+                <Feather name="edit-2" size={16} color="#9CA3AF" />
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* MENU SECTION */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>My Account</Text>
           <View style={styles.card}>
             {menuItems.map((item, index) => (
-              <TouchableOpacity 
-                key={index} 
+              <TouchableOpacity
+                key={index}
                 style={styles.menuItem}
                 onPress={item.onPress}
               >
                 <View style={styles.menuLeft}>
-                  {getIconComponent(item.iconType, item.icon, "#7C3AED")}
+                  {getIconComponent(item.iconType, item.icon, "#6B7280", 20)}
                   <Text style={styles.menuText}>{item.title}</Text>
                 </View>
                 <View style={styles.menuRight}>
@@ -501,163 +820,65 @@ export default function Profile() {
                       <Text style={styles.badgeText}>{item.count}</Text>
                     </View>
                   )}
-                  <Feather name="chevron-right" size={20} color="#9CA3AF" />
+                  <Feather name="chevron-right" size={18} color="#D1D5DB" />
                 </View>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* PERSONAL INFORMATION */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Personal Information</Text>
-          <View style={styles.card}>
-            <TouchableOpacity 
-              style={styles.infoRow}
-              onPress={() => openEditModal('firstname', user.firstname)}
-            >
-              <View style={styles.infoLeft}>
-                <Feather name="user" size={18} color="#7C3AED" />
-                <Text style={styles.infoLabel}>First Name</Text>
-              </View>
-              <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(user.firstname)}</Text>
-                <Feather name="edit-2" size={16} color="#9CA3AF" />
-              </View>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.infoRow}
-              onPress={() => openEditModal('lastname', user.lastname)}
-            >
-              <View style={styles.infoLeft}>
-                <Feather name="user" size={18} color="#7C3AED" />
-                <Text style={styles.infoLabel}>Last Name</Text>
-              </View>
-              <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(user.lastname)}</Text>
-                <Feather name="edit-2" size={16} color="#9CA3AF" />
-              </View>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.infoRow}
-              onPress={() => openEditModal('email', user.email)}
-            >
-              <View style={styles.infoLeft}>
-                <Feather name="mail" size={18} color="#7C3AED" />
-                <Text style={styles.infoLabel}>Email Address</Text>
-              </View>
-              <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(user.email)}</Text>
-                <Feather name="edit-2" size={16} color="#9CA3AF" />
-              </View>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.infoRow}
-              onPress={() => openEditModal('phone', user.phone)}
-            >
-              <View style={styles.infoLeft}>
-                <Feather name="phone" size={18} color="#7C3AED" />
-                <Text style={styles.infoLabel}>Phone Number</Text>
-              </View>
-              <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(user.phone)}</Text>
-                <Feather name="edit-2" size={16} color="#9CA3AF" />
-              </View>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.infoRow}
-              onPress={() => openEditModal('address', user.address)}
-            >
-              <View style={styles.infoLeft}>
-                <Feather name="map-pin" size={18} color="#7C3AED" />
-                <Text style={styles.infoLabel}>Address</Text>
-              </View>
-              <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(user.address)}</Text>
-                <Feather name="edit-2" size={16} color="#9CA3AF" />
-              </View>
-            </TouchableOpacity>
-            
-            <View style={styles.infoRow}>
-              <View style={styles.infoLeft}>
-                <Feather name="calendar" size={18} color="#7C3AED" />
-                <Text style={styles.infoLabel}>Member Since</Text>
-              </View>
-              <Text style={styles.infoValue}>
-                {new Date(user.createdAt).toLocaleDateString('en-US', { 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })}
-              </Text>
-            </View>
-            
-            <View style={styles.infoRow}>
-              <View style={styles.infoLeft}>
-                <Feather name="shield" size={18} color="#7C3AED" />
-                <Text style={styles.infoLabel}>Account Status</Text>
-              </View>
-              <View style={[styles.statusBadge, { backgroundColor: user.status ? "#DCFCE7" : "#FEE2E2" }]}>
-                <Text style={[styles.statusText, { color: user.status ? "#166534" : "#991B1B" }]}>
-                  {user.status ? "Verified" : "Pending"}
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* SETTINGS */}
+        {/* SETTINGS SECTION */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settings</Text>
           <View style={styles.card}>
             {settingsItems.map((item, index) => (
-              <TouchableOpacity 
-                key={index} 
-                style={styles.menuItem}
-                onPress={item.onPress}
-              >
+              <View key={index} style={styles.menuItem}>
                 <View style={styles.menuLeft}>
-                  {getIconComponent(item.iconType, item.icon, "#7C3AED")}
+                  {getIconComponent(item.iconType, item.icon, "#6B7280", 20)}
                   <Text style={styles.menuText}>{item.title}</Text>
                 </View>
-                {item.rightElement}
-              </TouchableOpacity>
+                <View style={styles.menuRight}>
+                  {item.rightElement}
+                </View>
+              </View>
             ))}
           </View>
         </View>
 
-        {/* SUPPORT */}
+        {/* SUPPORT SECTION */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Support</Text>
           <View style={styles.card}>
             {supportItems.map((item, index) => (
-              <TouchableOpacity 
-                key={index} 
+              <TouchableOpacity
+                key={index}
                 style={styles.menuItem}
                 onPress={item.onPress}
               >
                 <View style={styles.menuLeft}>
-                  {getIconComponent(item.iconType, item.icon, "#7C3AED")}
+                  {getIconComponent(item.iconType, item.icon, "#6B7280", 20)}
                   <Text style={styles.menuText}>{item.title}</Text>
                 </View>
-                <Feather name="chevron-right" size={20} color="#9CA3AF" />
+                <View style={styles.menuRight}>
+                  <Feather name="chevron-right" size={18} color="#D1D5DB" />
+                </View>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
         {/* LOGOUT BUTTON */}
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+        <TouchableOpacity 
+          style={styles.logoutBtn}
+          onPress={handleLogout}
+        >
           <Feather name="log-out" size={20} color="#EF4444" />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
 
+        {/* FOOTER */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>App Version 1.0.0</Text>
+          <Text style={styles.footerText}>Ready9ja v1.0.0</Text>
         </View>
       </ScrollView>
 
@@ -714,7 +935,6 @@ export default function Profile() {
                     style={[
                       styles.modalButton, 
                       styles.saveButton,
-                      // Safe check for editValue
                       ((!editValue || !editValue.trim()) || isSaving) && styles.saveButtonDisabled
                     ]}
                     onPress={handleSave}
@@ -729,6 +949,72 @@ export default function Profile() {
                 </View>
               </Animated.View>
             </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* FIXED: Role Switch Modal - Only shows when explicitly opened */}
+      <Modal
+        visible={showRoleSwitch}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeRoleSwitch}
+        statusBarTranslucent={true}
+      >
+        <TouchableWithoutFeedback onPress={closeRoleSwitch}>
+          <View style={styles.roleModalOverlay}>
+            <Animated.View 
+              style={[
+                styles.roleModalContent,
+                { transform: [{ translateY: roleSwitchAnim }] }
+              ]}
+            >
+              <View style={styles.roleModalHeader}>
+                <Text style={styles.roleModalTitle}>Switch Dashboard</Text>
+                <TouchableOpacity onPress={closeRoleSwitch} style={styles.roleCloseButton}>
+                  <Feather name="x" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.roleModalSubtitle}>
+                Choose a role to switch to its dashboard
+              </Text>
+
+              <View style={styles.roleList}>
+                {user.roles?.map((roleObj, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.roleItem,
+                      currentRole === roleObj.name && styles.roleItemActive
+                    ]}
+                    onPress={() => handleRoleSwitch(roleObj.name)}
+                  >
+                    <View style={styles.roleIconContainer}>
+                      <Ionicons 
+                        name={getRoleIcon(roleObj.name)} 
+                        size={24} 
+                        color={currentRole === roleObj.name ? "#7C3AED" : "#6B7280"} 
+                      />
+                    </View>
+                    <View style={styles.roleInfo}>
+                      <Text style={[
+                        styles.roleName,
+                        currentRole === roleObj.name && styles.roleNameActive
+                      ]}>
+                        {getRoleDisplayName(roleObj.name)}
+                      </Text>
+                      <Text style={styles.roleDescription}>
+                        {roleObj.description || `Access ${roleObj.name} features`}
+                      </Text>
+                    </View>
+                    {currentRole === roleObj.name && (
+                      <Feather name="check" size={20} color="#7C3AED" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Animated.View>
           </View>
         </TouchableWithoutFeedback>
       </Modal>
@@ -783,10 +1069,30 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#fff",
   },
-  role: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 14,
+  roleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 2,
+  },
+  role: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  roleSwitchButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginLeft: 8,
+    gap: 4,
+  },
+  roleSwitchText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "600",
   },
   statsContainer: {
     flexDirection: "row",
@@ -833,7 +1139,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   sellerCtaCard: {
-    backgroundColor: "linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)",
     backgroundColor: "#7C3AED",
     borderRadius: 16,
     padding: 20,
@@ -1030,7 +1335,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     minHeight: 300,
-    // Ensure modal stays above keyboard
     marginBottom: Platform.OS === 'ios' ? 0 : 20,
   },
   modalHeader: {
@@ -1088,5 +1392,166 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "600",
+  },
+  // Role Switch Modal Styles
+  // Role Switch Modal Styles
+  roleModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-start",
+    paddingTop: 50,
+  },
+  roleModalContent: {
+    backgroundColor: "white",
+    marginHorizontal: 20,
+    borderRadius: 20,
+    padding: 20,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    maxHeight: '80%', // Prevent modal from being too tall
+    marginTop: 100,
+  },
+  roleModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  roleModalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1F2937",
+  },
+  roleCloseButton: {
+    padding: 4,
+  },
+  roleModalSubtitle: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  roleList: {
+    gap: 8,
+  },
+  roleItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
+  },
+  roleItemActive: {
+    backgroundColor: "#F5F3FF",
+    borderColor: "#7C3AED",
+  },
+  roleIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  roleInfo: {
+    flex: 1,
+  },
+  roleName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 2,
+  },
+  roleNameActive: {
+    color: "#7C3AED",
+  },
+  roleDescription: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  // Custom Alert Styles
+  alertOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  alertContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  alertIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  alertContent: {
+    flex: 1,
+  },
+  alertTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 8,
+  },
+  alertMessage: {
+    fontSize: 16,
+    color: "#6B7280",
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  alertActions: {
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "flex-end",
+  },
+  alertCancelButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+  },
+  alertCancelText: {
+    color: "#374151",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  alertConfirmButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  alertConfirmText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  alertCloseButton: {
+    padding: 4,
+    marginLeft: 8,
   },
 });

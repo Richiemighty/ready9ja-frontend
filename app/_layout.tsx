@@ -7,8 +7,8 @@ export default function Layout() {
       <Stack.Screen name="register" />
       <Stack.Screen name="buyer/(tabs)/marketplace" />
       <Stack.Screen name="seller/dashboard" />
-      <Stack.Screen name="admin/dashboard" />
-      <Stack.Screen name="verify-email" />
+      {/* <Stack.Screen name="admin/dashboard" /> */}
+      {/* <Stack.Screen name="verify-email" /> */}
     </Stack>
   );
 }
