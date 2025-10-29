@@ -1,18 +1,17 @@
-import React, { useState, useRef, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  Alert, 
-  StyleSheet, 
-  Animated, 
-  Easing,
-  ScrollView,
-  Dimensions,
-  Pressable
-} from "react-native";
 import { useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Animated,
+  Dimensions,
+  Easing,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from "react-native";
 import { useAuth } from "../hooks/useAuth";
 
 const { width, height } = Dimensions.get('window');
@@ -117,8 +116,19 @@ export default function Register() {
 
     try {
       const res = await register(form);
-      Alert.alert("Success", res?.message || "User registered successfully");
-      router.push("/");
+      
+      // Show success alert with email verification message
+      Alert.alert(
+        "🎉 Account Created Successfully!", 
+        "Your account has been created successfully! Please check your email to verify your account before logging in.",
+        [
+          {
+            text: "Go to Login",
+            onPress: () => router.push("/login")
+          }
+        ]
+      );
+      
     } catch (err) {
       const msg =
         err.response?.data?.message ||
@@ -239,7 +249,7 @@ export default function Register() {
 
           <Pressable 
             style={styles.loginLink}
-            onPress={() => router.push("/")}
+            onPress={() => router.push("/login")}
           >
             <Text style={styles.loginText}>
               Already have an account? <Text style={styles.loginHighlight}>Sign In</Text>
@@ -253,6 +263,10 @@ export default function Register() {
             <View style={styles.securityItem}>
               <Text style={styles.securityIcon}>🔒</Text>
               <Text style={styles.securityText}>Your data is securely encrypted</Text>
+            </View>
+            <View style={styles.securityItem}>
+              <Text style={styles.securityIcon}>📧</Text>
+              <Text style={styles.securityText}>Email verification required</Text>
             </View>
             <View style={styles.securityItem}>
               <Text style={styles.securityIcon}>🌟</Text>

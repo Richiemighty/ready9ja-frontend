@@ -195,7 +195,7 @@ export default function Profile() {
       // Determine the correct redirect path based on role
       let redirectPath;
       switch(newRole) {
-        case 'seller':
+        case 'Seller':
           redirectPath = '/seller/(tabs)/dashboard';
           break;
         case 'admin':

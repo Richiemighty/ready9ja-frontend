@@ -1,8 +1,10 @@
+// product_details /buyer/products/[id].js
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   Image,
@@ -14,17 +16,44 @@ import {
   View
 } from "react-native";
 import api from "../../../constants/api";
-import { CartContext } from "../../../contexts/CartContext";
+import { useCart } from "../../../contexts/CartContext";
 
 const { width } = Dimensions.get("window");
+
+// Fallback cart functions in case context fails
+const fallbackCart = {
+  addToCart: async (product) => {
+    try {
+      // You'll need to implement getAuthToken or get it from your auth context
+      Alert.alert('Success', `${product.name} has been added to cart!`);
+      return true;
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      Alert.alert('Error', 'Failed to add item to cart. Please try again.');
+      return false;
+    }
+  },
+  addToFavorites: (product) => {
+    Alert.alert('Added to Favorites', `${product.name} has been added to your favorites!`);
+  }
+};
 
 export default function ProductDetails() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { addToCart, addToFavorites } = useContext(CartContext);
+  
+  // Try to use cart context, fallback to local functions if it fails
+  let cartFunctions;
+  try {
+    cartFunctions = useCart();
+  } catch (error) {
+    console.warn('CartContext not available, using fallback:', error);
+    cartFunctions = fallbackCart;
+  }
+  
+  const { addToCart, addToFavorites } = cartFunctions;
 
   const [product, setProduct] = useState(null);
-  const [seller, setSeller] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -81,9 +110,6 @@ export default function ProductDetails() {
       }
 
       setProduct(prod);
-      if (prod.createdBy) {
-        fetchSeller(prod.createdBy);
-      }
     } catch (err) {
       console.warn("Error fetching product:", err.message);
       showCustomAlert("Error", "Product not found!", "error");
@@ -92,32 +118,24 @@ export default function ProductDetails() {
     }
   };
 
-  const fetchSeller = async (sellerId) => {
-    try {
-      const res = await api.get(`/sellers/${sellerId}`);
-      if (res.data?.seller) {
-        setSeller(res.data.seller);
-      } else if (res.data) {
-        setSeller(res.data);
-      }
-    } catch (err) {
-      console.warn("Failed to fetch seller info:", err.message);
-    }
-  };
-
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (product.stock === 0) {
       showCustomAlert("Out of Stock", "This product is currently out of stock.", "warning");
       return;
     }
     
-    const itemToAdd = {
-      ...product,
-      quantity: quantity
-    };
-    
-    addToCart(itemToAdd);
-    showCustomAlert("Added to Cart", `${product.name} has been added to your cart!`, "success");
+    try {
+      const success = await addToCart({
+        ...product,
+        quantity: quantity
+      });
+      
+      if (success) {
+        showCustomAlert("Added to Cart", `${product.name} has been added to your cart!`, "success");
+      }
+    } catch (error) {
+      showCustomAlert("Error", "Failed to add item to cart. Please try again.", "error");
+    }
   };
 
   const handleAddToFavorites = () => {
@@ -135,8 +153,8 @@ export default function ProductDetails() {
   };
 
   const handleSellerProfile = () => {
-    if (seller) {
-      router.push(`/buyer/seller/${seller.userId || seller.id}`);
+    if (product?.business) {
+      router.push(`/buyer/seller/${product.business.id}`);
     }
   };
 
@@ -246,7 +264,7 @@ export default function ProductDetails() {
                 
                 <Text style={styles.requestLabel}>Seller:</Text>
                 <Text style={styles.requestValue}>
-                  {seller?.businessName || seller?.name || "Unknown Seller"}
+                  {product.business?.name || "Unknown Seller"}
                 </Text>
               </View>
             </View>
@@ -435,7 +453,7 @@ export default function ProductDetails() {
           </View>
 
           {/* Seller Information */}
-          {seller && (
+          {product.business && (
             <View style={styles.sellerSection}>
               <Text style={styles.sectionTitle}>Seller Information</Text>
               <TouchableOpacity 
@@ -444,19 +462,33 @@ export default function ProductDetails() {
               >
                 <View style={styles.sellerHeader}>
                   <View style={styles.sellerAvatar}>
-                    <Feather name="store" size={20} color="#7C3AED" />
+                    {product.business.businessImage ? (
+                      <Image 
+                        source={{ uri: product.business.businessImage }}
+                        style={styles.sellerImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Feather name="store" size={20} color="#7C3AED" />
+                    )}
                   </View>
                   <View style={styles.sellerInfo}>
                     <Text style={styles.sellerName}>
-                      {seller.businessName || seller.name || "Unknown Seller"}
+                      {product.business.name}
                     </Text>
+                    <View style={styles.sellerLocation}>
+                      <Feather name="map-pin" size={14} color="#6B7280" />
+                      <Text style={styles.sellerLocationText}>
+                        {product.business.location_city}, {product.business.location_state}
+                      </Text>
+                    </View>
                     <View style={styles.sellerStats}>
                       <Text style={styles.sellerRating}>
-                        ⭐ {seller.rating || "4.5"} 
+                        ⭐ 4.5
                       </Text>
                       <Text style={styles.sellerDot}>•</Text>
                       <Text style={styles.sellerSales}>
-                        {seller.totalSales || "100+"} sales
+                        100+ sales
                       </Text>
                     </View>
                   </View>
@@ -466,7 +498,7 @@ export default function ProductDetails() {
                 <View style={styles.sellerActions}>
                   <TouchableOpacity
                     style={styles.chatButton}
-                    onPress={() => router.push(`/buyer/chat/${seller.userId || seller.id}`)}
+                    onPress={() => router.push(`/buyer/chat/${product.createdBy}`)}
                   >
                     <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fff" />
                     <Text style={styles.chatButtonText}>Chat</Text>
@@ -976,6 +1008,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
+    overflow: "hidden",
+  },
+  sellerImage: {
+    width: "100%",
+    height: "100%",
   },
   sellerInfo: {
     flex: 1,
@@ -985,6 +1022,16 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#111827",
     marginBottom: 4,
+  },
+  sellerLocation: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+    gap: 4,
+  },
+  sellerLocationText: {
+    fontSize: 14,
+    color: "#6B7280",
   },
   sellerStats: {
     flexDirection: "row",

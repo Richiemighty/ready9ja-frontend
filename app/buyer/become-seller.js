@@ -15,20 +15,27 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { useAuth } from "../../hooks/useAuth";
 
 export default function BecomeSeller() {
   const router = useRouter();
+  const { getUser } = useAuth();
   const [form, setForm] = useState({
-    businessName: "",
-    yearLaunched: "",
-    businessAddress: "",
+    name: "",
+    yearFounded: "",
+    location_address: "",
+    location_city: "",
+    location_state: "",
+    location_country: "Nigeria",
     category: "",
     nin: "",
   });
   const [loading, setLoading] = useState(false);
-  const [logoImage, setLogoImage] = useState(null);
+  const [businessImage, setBusinessImage] = useState(null);
   const [cacImage, setCacImage] = useState(null);
+  const [bannerImages, setBannerImages] = useState([]);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const businessCategories = [
     "Fashion & Clothing",
@@ -53,6 +60,14 @@ export default function BecomeSeller() {
     "Others"
   ];
 
+  const nigerianStates = [
+    "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno", 
+    "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "FCT", "Gombe", "Imo", 
+    "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", "Lagos", "Nasarawa", 
+    "Niger", "Ogun", "Ondo", "Osun", "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba", 
+    "Yobe", "Zamfara"
+  ];
+
   const handleChange = (field, value) => {
     setForm({ ...form, [field]: value });
   };
@@ -69,15 +84,17 @@ export default function BecomeSeller() {
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: type === 'logo' ? [1, 1] : [4, 3],
+        aspect: type === 'businessImage' ? [1, 1] : [4, 3],
         quality: 0.8,
       });
 
       if (!result.canceled) {
-        if (type === 'logo') {
-          setLogoImage(result.assets[0]);
-        } else {
+        if (type === 'businessImage') {
+          setBusinessImage(result.assets[0]);
+        } else if (type === 'cacImage') {
           setCacImage(result.assets[0]);
+        } else if (type === 'banner') {
+          setBannerImages(prev => [...prev, result.assets[0]]);
         }
       }
     } catch (error) {
@@ -97,15 +114,17 @@ export default function BecomeSeller() {
 
       let result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
-        aspect: type === 'logo' ? [1, 1] : [4, 3],
+        aspect: type === 'businessImage' ? [1, 1] : [4, 3],
         quality: 0.8,
       });
 
       if (!result.canceled) {
-        if (type === 'logo') {
-          setLogoImage(result.assets[0]);
-        } else {
+        if (type === 'businessImage') {
+          setBusinessImage(result.assets[0]);
+        } else if (type === 'cacImage') {
           setCacImage(result.assets[0]);
+        } else if (type === 'banner') {
+          setBannerImages(prev => [...prev, result.assets[0]]);
         }
       }
     } catch (error) {
@@ -116,7 +135,7 @@ export default function BecomeSeller() {
 
   const showImagePickerOptions = (type) => {
     Alert.alert(
-      `Upload ${type === 'logo' ? 'Business Logo' : 'CAC Document'}`,
+      `Upload ${type === 'businessImage' ? 'Business Image' : type === 'cacImage' ? 'CAC Document' : 'Banner Image'}`,
       "Choose an option",
       [
         {
@@ -135,21 +154,33 @@ export default function BecomeSeller() {
     );
   };
 
+  const removeBannerImage = (index) => {
+    setBannerImages(prev => prev.filter((_, i) => i !== index));
+  };
+
   const validateForm = () => {
-    if (!form.businessName.trim()) {
+    if (!form.name.trim()) {
       Alert.alert("Missing Information", "Please enter your business name.");
       return false;
     }
-    if (!form.yearLaunched || form.yearLaunched.length !== 4 || parseInt(form.yearLaunched) < 1900 || parseInt(form.yearLaunched) > new Date().getFullYear()) {
-      Alert.alert("Invalid Year", "Please enter a valid year of launch (e.g., 2020).");
+    if (!form.yearFounded || form.yearFounded.length !== 4 || parseInt(form.yearFounded) < 1900 || parseInt(form.yearFounded) > new Date().getFullYear()) {
+      Alert.alert("Invalid Year", "Please enter a valid year founded (e.g., 2020).");
       return false;
     }
-    if (!logoImage) {
-      Alert.alert("Logo Required", "Please upload your business logo.");
+    if (!businessImage) {
+      Alert.alert("Business Image Required", "Please upload your business image.");
       return false;
     }
-    if (!form.businessAddress.trim()) {
-      Alert.alert("Address Required", "Please enter your business office address.");
+    if (!form.location_address.trim()) {
+      Alert.alert("Address Required", "Please enter your business address.");
+      return false;
+    }
+    if (!form.location_city.trim()) {
+      Alert.alert("City Required", "Please enter your business city.");
+      return false;
+    }
+    if (!form.location_state) {
+      Alert.alert("State Required", "Please select your business state.");
       return false;
     }
     if (!form.category) {
@@ -167,59 +198,119 @@ export default function BecomeSeller() {
     return true;
   };
 
+  // Helper function to get the auth token
+  const getAuthToken = async () => {
+    try {
+      const userData = await getUser();
+      return userData?.accessToken;
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return null;
+    }
+  };
+
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
     setLoading(true);
     try {
+      // Get the authentication token
+      const token = await getAuthToken();
+      if (!token) {
+        Alert.alert(
+          "🔐 Authentication Required",
+          "Please log in to register a business.",
+          [{ text: "OK", style: "default" }]
+        );
+        setLoading(false);
+        return;
+      }
+
       // Create form data for file upload
       const formData = new FormData();
       
-      formData.append('businessName', form.businessName);
-      formData.append('yearLaunched', form.yearLaunched);
-      formData.append('businessAddress', form.businessAddress);
+      // Append text fields
+      formData.append('name', form.name);
+      formData.append('yearFounded', parseInt(form.yearFounded));
+      formData.append('location_address', form.location_address);
+      formData.append('location_city', form.location_city);
+      formData.append('location_state', form.location_state);
+      formData.append('location_country', form.location_country);
       formData.append('category', form.category);
       formData.append('nin', form.nin);
       
-      // Append logo image
-      if (logoImage) {
-        formData.append('logo', {
-          uri: logoImage.uri,
+      // Append business image
+      if (businessImage) {
+        formData.append('businessImage', {
+          uri: businessImage.uri,
           type: 'image/jpeg',
-          name: `logo_${Date.now()}.jpg`,
+          name: `businessImage_${Date.now()}.jpg`,
         });
       }
       
       // Append CAC image
       if (cacImage) {
-        formData.append('cacDocument', {
+        formData.append('cacImage', {
           uri: cacImage.uri,
           type: 'image/jpeg',
-          name: `cac_${Date.now()}.jpg`,
+          name: `cacImage_${Date.now()}.jpg`,
         });
       }
+      
+      // Append banner images
+      bannerImages.forEach((image, index) => {
+        formData.append('bannerImages', {
+          uri: image.uri,
+          type: 'image/jpeg',
+          name: `banner_${Date.now()}_${index}.jpg`,
+        });
+      });
 
-      const response = await fetch("https://ready9ja-api.onrender.com/api/sellers/request", {
+      const response = await fetch("https://ready9ja-api.onrender.com/api/v1/business/register", {
         method: "POST",
         headers: {
           "Content-Type": "multipart/form-data",
+          "Authorization": `Bearer ${token}`,
         },
         body: formData,
       });
 
       if (response.ok) {
-        Alert.alert(
-          "✅ Success", 
-          "Your seller application has been submitted successfully! Our team will review your application within 2-3 business days.",
-          [{ text: "OK", onPress: () => router.back() }]
-        );
+        const result = await response.json();
+        setShowSuccessModal(true);
       } else {
         const errorData = await response.json();
-        Alert.alert("❌ Submission Failed", errorData.message || "Unable to submit your request. Please try again.");
+        Alert.alert(
+          "❌ Registration Failed", 
+          errorData.message || "Unable to register your business. Please check your information and try again.",
+          [
+            { 
+              text: "Try Again", 
+              style: "default" 
+            }
+          ]
+        );
       }
     } catch (error) {
       console.error("Error:", error);
-      Alert.alert("❌ Network Error", "Unable to connect to server. Please check your internet connection and try again.");
+      Alert.alert(
+        "🌐 Connection Issue", 
+        `Unable to connect to our servers right now.
+
+Please check your internet connection and try again.
+
+If the problem persists, contact our support team.`,
+        [
+          { 
+            text: "Retry", 
+            style: "default" 
+          },
+          { 
+            text: "Cancel", 
+            style: "cancel" 
+          }
+        ]
+      );
     } finally {
       setLoading(false);
     }
@@ -232,7 +323,7 @@ export default function BecomeSeller() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color="#1F2937" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Become a Seller</Text>
+        <Text style={styles.headerTitle}>Register Business</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -249,51 +340,118 @@ export default function BecomeSeller() {
           <TextInput
             style={styles.input}
             placeholder="Enter your registered business name"
-            value={form.businessName}
-            onChangeText={(v) => handleChange("businessName", v)}
+            value={form.name}
+            onChangeText={(v) => handleChange("name", v)}
           />
         </View>
 
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Year Launched *</Text>
+          <Text style={styles.label}>Year Founded *</Text>
           <TextInput
             style={styles.input}
             placeholder="e.g., 2020"
-            value={form.yearLaunched}
+            value={form.yearFounded}
             keyboardType="numeric"
             maxLength={4}
-            onChangeText={(v) => handleChange("yearLaunched", v)}
+            onChangeText={(v) => handleChange("yearFounded", v)}
           />
         </View>
 
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Business Logo *</Text>
-          <Text style={styles.helperText}>Upload a clear image of your business logo</Text>
+          <Text style={styles.label}>Business Image *</Text>
+          <Text style={styles.helperText}>Upload a clear image of your business</Text>
           <TouchableOpacity 
             style={styles.imageUploadButton}
-            onPress={() => showImagePickerOptions('logo')}
+            onPress={() => showImagePickerOptions('businessImage')}
           >
-            {logoImage ? (
-              <Image source={{ uri: logoImage.uri }} style={styles.uploadedImage} />
+            {businessImage ? (
+              <Image source={{ uri: businessImage.uri }} style={styles.uploadedImage} />
             ) : (
               <View style={styles.uploadPlaceholder}>
                 <Feather name="upload" size={32} color="#6B7280" />
-                <Text style={styles.uploadText}>Tap to upload logo</Text>
+                <Text style={styles.uploadText}>Tap to upload business image</Text>
                 <Text style={styles.uploadSubtext}>Recommended: Square image, 500x500px</Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
 
+        {/* Banner Images */}
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Business Office Address *</Text>
+          <Text style={styles.label}>Banner Images</Text>
+          <Text style={styles.helperText}>Upload images for your business banner (optional)</Text>
+          
+          {bannerImages.length > 0 && (
+            <View style={styles.bannerImagesContainer}>
+              {bannerImages.map((image, index) => (
+                <View key={index} style={styles.bannerImageWrapper}>
+                  <Image source={{ uri: image.uri }} style={styles.bannerImage} />
+                  <TouchableOpacity 
+                    style={styles.removeBannerButton}
+                    onPress={() => removeBannerImage(index)}
+                  >
+                    <Feather name="x" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+          
+          <TouchableOpacity 
+            style={styles.bannerUploadButton}
+            onPress={() => showImagePickerOptions('banner')}
+          >
+            <Feather name="plus" size={24} color="#7C3AED" />
+            <Text style={styles.bannerUploadText}>Add Banner Image</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Location Information */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Location Information</Text>
+        
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Address *</Text>
           <TextInput
             style={[styles.input, styles.textArea]}
-            placeholder="Enter complete business address including city and state"
+            placeholder="Enter complete business address"
             multiline
             numberOfLines={3}
-            value={form.businessAddress}
-            onChangeText={(v) => handleChange("businessAddress", v)}
+            value={form.location_address}
+            onChangeText={(v) => handleChange("location_address", v)}
+          />
+        </View>
+
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>City *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your business city"
+            value={form.location_city}
+            onChangeText={(v) => handleChange("location_city", v)}
+          />
+        </View>
+
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>State *</Text>
+          <TouchableOpacity 
+            style={styles.categorySelector}
+            onPress={() => setShowCategoryModal('state')}
+          >
+            <Text style={form.location_state ? styles.categorySelectedText : styles.categoryPlaceholder}>
+              {form.location_state || "Select your state"}
+            </Text>
+            <Feather name="chevron-down" size={20} color="#6B7280" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Country</Text>
+          <TextInput
+            style={styles.input}
+            value={form.location_country}
+            editable={false}
           />
         </View>
       </View>
@@ -306,7 +464,7 @@ export default function BecomeSeller() {
           <Text style={styles.label}>Category of Business *</Text>
           <TouchableOpacity 
             style={styles.categorySelector}
-            onPress={() => setShowCategoryModal(true)}
+            onPress={() => setShowCategoryModal('category')}
           >
             <Text style={form.category ? styles.categorySelectedText : styles.categoryPlaceholder}>
               {form.category || "Select your business category"}
@@ -337,7 +495,7 @@ export default function BecomeSeller() {
           <Text style={styles.helperText}>Upload a clear photo of your CAC registration certificate</Text>
           <TouchableOpacity 
             style={styles.imageUploadButton}
-            onPress={() => showImagePickerOptions('cac')}
+            onPress={() => showImagePickerOptions('cacImage')}
           >
             {cacImage ? (
               <Image source={{ uri: cacImage.uri }} style={styles.uploadedImage} />
@@ -363,26 +521,28 @@ export default function BecomeSeller() {
         ) : (
           <>
             <Feather name="send" size={20} color="#fff" />
-            <Text style={styles.submitText}>Submit Application</Text>
+            <Text style={styles.submitText}>Register Business</Text>
           </>
         )}
       </TouchableOpacity>
 
       <Text style={styles.footerNote}>
         * Required fields{"\n"}
-        Your application will be reviewed within 2-3 business days. You'll receive a notification once approved.
+        Your business will be registered immediately upon successful submission.
       </Text>
 
-      {/* Category Selection Modal */}
+      {/* Category/State Selection Modal */}
       <Modal
-        visible={showCategoryModal}
+        visible={showCategoryModal !== false}
         transparent={true}
         animationType="slide"
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Business Category</Text>
+              <Text style={styles.modalTitle}>
+                {showCategoryModal === 'category' ? 'Select Business Category' : 'Select State'}
+              </Text>
               <TouchableOpacity 
                 onPress={() => setShowCategoryModal(false)}
                 style={styles.modalClose}
@@ -392,32 +552,82 @@ export default function BecomeSeller() {
             </View>
             
             <FlatList
-              data={businessCategories}
+              data={showCategoryModal === 'category' ? businessCategories : nigerianStates}
               keyExtractor={(item) => item}
               showsVerticalScrollIndicator={false}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
                     styles.categoryItem,
-                    form.category === item && styles.categoryItemSelected
+                    (showCategoryModal === 'category' ? form.category === item : form.location_state === item) && styles.categoryItemSelected
                   ]}
                   onPress={() => {
-                    handleChange("category", item);
+                    if (showCategoryModal === 'category') {
+                      handleChange("category", item);
+                    } else {
+                      handleChange("location_state", item);
+                    }
                     setShowCategoryModal(false);
                   }}
                 >
                   <Text style={[
                     styles.categoryItemText,
-                    form.category === item && styles.categoryItemTextSelected
+                    (showCategoryModal === 'category' ? form.category === item : form.location_state === item) && styles.categoryItemTextSelected
                   ]}>
                     {item}
                   </Text>
-                  {form.category === item && (
+                  {(showCategoryModal === 'category' ? form.category === item : form.location_state === item) && (
                     <Feather name="check" size={20} color="#7C3AED" />
                   )}
                 </TouchableOpacity>
               )}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Custom Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.successModalContent}>
+            <View style={styles.successIconContainer}>
+              <Feather name="check-circle" size={60} color="#10B981" />
+            </View>
+            
+            <Text style={styles.successTitle}>Application Submitted!</Text>
+            
+            <Text style={styles.successMessage}>
+              Your information has been uploaded successfully. We will review and get back to you within 48 hours.
+            </Text>
+            
+            <View style={styles.successDetails}>
+              <View style={styles.detailItem}>
+                <Feather name="check" size={20} color="#10B981" />
+                <Text style={styles.detailText}>Business information received</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Feather name="clock" size={20} color="#F59E0B" />
+                <Text style={styles.detailText}>Under review (48 hours)</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Feather name="mail" size={20} color="#7C3AED" />
+                <Text style={styles.detailText}>Email notification upon approval</Text>
+              </View>
+            </View>
+            
+            <TouchableOpacity 
+              style={styles.successButton}
+              onPress={() => {
+                setShowSuccessModal(false);
+                router.back();
+              }}
+            >
+              <Text style={styles.successButtonText}>Continue</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -429,6 +639,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",
+    // position: "fixed",
   },
   header: {
     flexDirection: "row",
@@ -436,6 +647,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 16,
+    paddingTop: 68,
+    position: "sticky",
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
@@ -550,6 +763,50 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: "center",
   },
+  bannerImagesContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 12,
+  },
+  bannerImageWrapper: {
+    position: "relative",
+    width: 80,
+    height: 60,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  bannerImage: {
+    width: "100%",
+    height: "100%",
+  },
+  removeBannerButton: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bannerUploadButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+    borderStyle: "dashed",
+    borderRadius: 8,
+    padding: 16,
+    gap: 8,
+  },
+  bannerUploadText: {
+    color: "#7C3AED",
+    fontSize: 14,
+    fontWeight: "600",
+  },
   submitButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -586,9 +843,10 @@ const styles = StyleSheet.create({
   // Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
     justifyContent: "center",
     alignItems: "center",
+    padding: 20,
   },
   modalContent: {
     backgroundColor: "#FFFFFF",
@@ -639,5 +897,73 @@ const styles = StyleSheet.create({
   categoryItemTextSelected: {
     color: "#7C3AED",
     fontWeight: "600",
+  },
+  // Success Modal Styles
+  successModalContent: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 30,
+    width: "100%",
+    maxWidth: 400,
+    alignItems: "center",
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  successIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#ECFDF5",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#10B981",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  successMessage: {
+    fontSize: 16,
+    color: "#6B7280",
+    textAlign: "center",
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  successDetails: {
+    width: "100%",
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 24,
+  },
+  detailItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  detailText: {
+    fontSize: 14,
+    color: "#374151",
+    marginLeft: 12,
+    flex: 1,
+  },
+  successButton: {
+    backgroundColor: "#7C3AED",
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    width: "100%",
+    alignItems: "center",
+  },
+  successButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });
