@@ -9,12 +9,13 @@ const CartContext = createContext();
 export const CartProvider = ({ children }) => {
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [cartUpdated, setCartUpdated] = useState(0); // Add this state to trigger updates
   const { getUser } = useAuth();
 
-  // Fetch cart from API when component mounts
+  // Fetch cart from API when component mounts or when cartUpdated changes
   useEffect(() => {
     fetchCart();
-  }, []);
+  }, [cartUpdated]); // Add cartUpdated as dependency
 
   const fetchCart = async () => {
     try {
@@ -33,14 +34,8 @@ export const CartProvider = ({ children }) => {
       
       console.log('Cart API response:', response.data);
       
-      if (response.data && response.data.success) {
-        // Handle the nested product data properly
-        const cartItems = response.data.data.map(item => ({
-          ...item,
-          // Ensure product data is properly extracted
-          product: item.product || {}
-        }));
-        setCart(cartItems);
+      if (response.data && response.data.success && Array.isArray(response.data.data)) {
+        setCart(response.data.data);
       }
     } catch (error) {
       console.error('Error fetching cart:', error);
@@ -84,8 +79,8 @@ export const CartProvider = ({ children }) => {
       console.log('Add to cart response:', response.data);
       
       if (response.data) {
-        // Refresh cart from API after successful addition
-        await fetchCart();
+        // Trigger cart refresh by updating cartUpdated state
+        setCartUpdated(prev => prev + 1);
         Alert.alert('Success', 'Item added to cart!');
         return true;
       }
@@ -96,10 +91,12 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  const removeFromCart = async (productId) => {
+  const removeFromCart = async (cartItemId) => {
     try {
       const token = await getAuthToken();
-      const response = await api.delete(`/carts/${productId}`, {
+      console.log('Removing cart item with ID:', cartItemId);
+      
+      const response = await api.delete(`/carts/${cartItemId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -108,8 +105,8 @@ export const CartProvider = ({ children }) => {
       console.log('Remove from cart response:', response.status);
       
       if (response.status === 200 || response.status === 204) {
-        // Refresh cart from API after successful removal
-        await fetchCart();
+        // Trigger cart refresh
+        setCartUpdated(prev => prev + 1);
         Alert.alert('Success', 'Item removed from cart!');
         return true;
       }
@@ -120,19 +117,37 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  const updateCartItemQuantity = async (productId, quantity) => {
+  const updateCartItemQuantity = async (cartItemId, quantity) => {
     try {
       const token = await getAuthToken();
-      const response = await api.put(`/carts/${productId}`, { 
-        quantity 
-      }, {
+      console.log('Updating cart item:', cartItemId, 'quantity:', quantity);
+      
+      // Since there's no PUT endpoint, we need to use POST with the full cart item data
+      // First, get the current cart item to get the product_id
+      const currentItem = cart.find(item => item.id === cartItemId);
+      if (!currentItem) {
+        throw new Error('Cart item not found');
+      }
+
+      const updateData = {
+        product_id: currentItem.product_id,
+        quantity: quantity
+      };
+
+      console.log('Update data:', updateData);
+
+      // Use POST to update the cart item (since API docs show POST for add/update)
+      const response = await api.post('/carts', updateData, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
       
+      console.log('Update cart response:', response.data);
+      
       if (response.data) {
-        await fetchCart();
+        // Trigger cart refresh
+        setCartUpdated(prev => prev + 1);
         return true;
       }
     } catch (error) {
@@ -147,14 +162,14 @@ export const CartProvider = ({ children }) => {
       const token = await getAuthToken();
       // Since the API doesn't have a clear all endpoint, we'll remove each item individually
       for (const item of cart) {
-        const productId = item.product_id || item.id;
-        await api.delete(`/carts/${productId}`, {
+        await api.delete(`/carts/${item.id}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
       }
-      setCart([]);
+      // Trigger cart refresh
+      setCartUpdated(prev => prev + 1);
       Alert.alert('Success', 'Cart cleared successfully!');
     } catch (error) {
       console.error('Error clearing cart:', error);
@@ -174,7 +189,8 @@ export const CartProvider = ({ children }) => {
     updateCartItemQuantity,
     addToFavorites,
     clearCart,
-    refreshCart: fetchCart
+    refreshCart: fetchCart,
+    triggerCartUpdate: () => setCartUpdated(prev => prev + 1) // Add this function
   };
 
   return (

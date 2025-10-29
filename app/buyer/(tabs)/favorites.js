@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useContext } from "react";
 import { FlatList, Text, View } from "react-native";
 import ProductCard from "../../../components/ProductCard";
-import { CartContext } from "../../../contexts/CartContext";
+// import { CartContext } from "../../../contexts/CartContext";
 
 export default function Favorites() {
   const { favorites } = useContext(CartContext);

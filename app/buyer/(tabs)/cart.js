@@ -1,5 +1,6 @@
 // CartScreen.js
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from 'expo-router'; // Change from react-navigation to expo-router
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -23,6 +24,7 @@ export default function CartScreen() {
     loading, 
     refreshCart 
   } = useCart();
+  const router = useRouter(); // Use Expo Router instead of navigation
   const [refreshing, setRefreshing] = useState(false);
   const [updatingItems, setUpdatingItems] = useState({});
 
@@ -57,37 +59,70 @@ export default function CartScreen() {
           text: "Remove", 
           style: "destructive",
           onPress: async () => {
-            const productId = item.product_id || item.id;
-            await removeFromCart(productId);
+            await removeFromCart(item.id);
           }
         }
       ]
     );
   };
 
-  const handleQuantityChange = async (item, newQuantity) => {
-    if (newQuantity < 1) return;
+  // Function to handle product click - Updated for Expo Router
+  const handleProductPress = (item) => {
+    const product = item.product || item;
+    const productId = product.productId || product.id;
     
-    const productId = item.product_id || item.id;
-    setUpdatingItems(prev => ({ ...prev, [productId]: true }));
+    if (productId) {
+      router.push(`/buyer/product/${productId}`);
+    } else {
+      console.error('Product ID not found for item:', item);
+      Alert.alert('Error', 'Cannot navigate to product details - product ID missing');
+    }
+  };
+
+  const handleQuantityChange = async (item, newQuantity) => {
+    if (newQuantity < 1) {
+      // If quantity becomes 0, remove the item
+      await removeFromCart(item.id);
+      return;
+    }
+    
+    console.log('Changing quantity for item:', item.id, 'from:', item.quantity, 'to:', newQuantity);
+    
+    const cartItemId = item.id;
+    setUpdatingItems(prev => ({ ...prev, [cartItemId]: true }));
     
     try {
-      await updateCartItemQuantity(productId, newQuantity);
+      const success = await updateCartItemQuantity(cartItemId, newQuantity);
+      console.log('Quantity update result:', success);
+      
+      if (!success) {
+        Alert.alert('Error', 'Failed to update quantity. Please try again.');
+        // Refresh cart to get current state
+        await refreshCart();
+      }
+    } catch (error) {
+      console.error('Error in handleQuantityChange:', error);
+      Alert.alert('Error', 'Failed to update quantity');
+      // Refresh cart to get current state
+      await refreshCart();
     } finally {
-      setUpdatingItems(prev => ({ ...prev, [productId]: false }));
+      setUpdatingItems(prev => ({ ...prev, [cartItemId]: false }));
     }
   };
 
   const renderItem = ({ item }) => {
-    // Handle nested product data structure
     const product = item.product || item;
-    const productId = item.product_id || item.id;
-    const isUpdating = updatingItems[productId];
-
-    console.log('Cart item:', item); // Debug log to see the actual structure
+    const cartItemId = item.id;
+    const isUpdating = updatingItems[cartItemId];
+    const currentQuantity = item.quantity || 1;
+    const productId = product.productId || product.id;
 
     return (
-      <View style={styles.itemContainer}>
+      <TouchableOpacity 
+        style={styles.itemContainer}
+        onPress={() => handleProductPress(item)}
+        activeOpacity={0.7}
+      >
         <Image
           source={{ 
             uri: product.images?.[0] || 
@@ -104,26 +139,35 @@ export default function CartScreen() {
             <Text style={styles.quantityLabel}>Quantity:</Text>
             <View style={styles.quantityControls}>
               <TouchableOpacity 
-                style={styles.quantityButton}
-                onPress={() => handleQuantityChange(item, (item.quantity || 1) - 1)}
-                disabled={isUpdating || (item.quantity || 1) <= 1}
+                style={[
+                  styles.quantityButton,
+                  currentQuantity <= 1 && styles.quantityButtonDisabled
+                ]}
+                onPress={(e) => {
+                  e.stopPropagation(); // Prevent triggering the parent TouchableOpacity
+                  handleQuantityChange(item, currentQuantity - 1);
+                }}
+                disabled={isUpdating || currentQuantity <= 1}
               >
                 <Ionicons 
                   name="remove" 
                   size={16} 
-                  color={(item.quantity || 1) <= 1 ? "#ccc" : "#7C3AED"} 
+                  color={currentQuantity <= 1 ? "#ccc" : "#7C3AED"} 
                 />
               </TouchableOpacity>
               
               {isUpdating ? (
                 <ActivityIndicator size="small" color="#7C3AED" />
               ) : (
-                <Text style={styles.quantityText}>{item.quantity || 1}</Text>
+                <Text style={styles.quantityText}>{currentQuantity}</Text>
               )}
               
               <TouchableOpacity 
                 style={styles.quantityButton}
-                onPress={() => handleQuantityChange(item, (item.quantity || 1) + 1)}
+                onPress={(e) => {
+                  e.stopPropagation(); // Prevent triggering the parent TouchableOpacity
+                  handleQuantityChange(item, currentQuantity + 1);
+                }}
                 disabled={isUpdating}
               >
                 <Ionicons name="add" size={16} color="#7C3AED" />
@@ -132,18 +176,21 @@ export default function CartScreen() {
           </View>
           
           <Text style={styles.itemTotal}>
-            ₦{((product.price || 0) * (item.quantity || 1)).toLocaleString()}
+            ₦{((product.price || 0) * currentQuantity).toLocaleString()}
           </Text>
         </View>
         
         <TouchableOpacity 
-          onPress={() => handleRemoveItem(item)}
+          onPress={(e) => {
+            e.stopPropagation(); // Prevent triggering the parent TouchableOpacity
+            handleRemoveItem(item);
+          }}
           style={styles.removeButton}
           disabled={isUpdating}
         >
           <Ionicons name="trash-outline" size={24} color="#d9534f" />
         </TouchableOpacity>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -174,12 +221,19 @@ export default function CartScreen() {
             <Ionicons name="refresh" size={20} color="#7C3AED" />
             <Text style={styles.refreshText}>Refresh Cart</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.browseButton}
+            onPress={() => router.push('/buyer/home')}
+          >
+            <Text style={styles.browseText}>Browse Products</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <>
           <FlatList
             data={cart}
-            keyExtractor={(item) => String(item.product_id || item.id)}
+            keyExtractor={(item) => String(item.id)}
             renderItem={renderItem}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
@@ -311,6 +365,9 @@ const styles = StyleSheet.create({
     padding: 6,
     borderRadius: 6,
   },
+  quantityButtonDisabled: {
+    opacity: 0.5,
+  },
   quantityText: {
     paddingHorizontal: 12,
     fontSize: 14,
@@ -403,5 +460,18 @@ const styles = StyleSheet.create({
   refreshText: {
     color: "#7C3AED",
     fontWeight: "600",
+  },
+  browseButton: {
+    marginTop: 15,
+    padding: 15,
+    backgroundColor: "#7C3AED",
+    borderRadius: 10,
+    alignItems: "center",
+    minWidth: 200,
+  },
+  browseText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
   },
 });

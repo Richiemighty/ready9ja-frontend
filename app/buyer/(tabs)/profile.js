@@ -8,14 +8,17 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Image,
   Keyboard,
   KeyboardAvoidingView,
-  Modal, Platform, ScrollView,
+  Modal,
+  Platform,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -45,10 +48,10 @@ export default function Profile() {
   const [showAlert, setShowAlert] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
 
-  // Animation values - FIXED: Start with modal hidden
-  const slideAnim = useState(new Animated.Value(300))[0];
-  const roleSwitchAnim = useState(new Animated.Value(-300))[0];
-  const alertAnim = useState(new Animated.Value(-100))[0];
+  // Use refs for animations
+  const slideAnim = useRef(new Animated.Value(300)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const alertScaleAnim = useRef(new Animated.Value(0)).current;
 
   // cross-platform getter and setter
   const getItem = async (key) => {
@@ -66,8 +69,30 @@ export default function Profile() {
     loadCurrentRole();
   }, []);
 
-  // IMPROVED Custom Alert System with better mobile support
-  const showCustomAlert = (title, message, type = "success", options = {}) => {
+  // SIMPLIFIED Alert System for iOS compatibility
+  const showCustomAlert = (title, message, type = "info", options = {}) => {
+    // On iOS, use native Alert for better compatibility
+    if (Platform.OS === 'ios' && options.showActions) {
+      Alert.alert(
+        title,
+        message,
+        [
+          {
+            text: options.cancelText || 'Cancel',
+            style: 'cancel',
+            onPress: options.onCancel
+          },
+          {
+            text: options.confirmText || 'OK',
+            style: type === 'error' ? 'destructive' : 'default',
+            onPress: options.onConfirm
+          }
+        ].filter(Boolean) // Remove null buttons
+      );
+      return;
+    }
+
+    // For non-iOS or non-action alerts, use custom modal
     setAlertConfig({
       title,
       message,
@@ -77,32 +102,33 @@ export default function Profile() {
             type === "warning" ? "warning" : "information",
       ...options
     });
-    setShowAlert(true);
     
-    Animated.timing(alertAnim, {
-      toValue: 0,
-      duration: 300,
+    setShowAlert(true);
+    alertScaleAnim.setValue(0);
+    
+    Animated.spring(alertScaleAnim, {
+      toValue: 1,
+      tension: 100,
+      friction: 8,
       useNativeDriver: true,
     }).start();
 
-    // Auto hide after 3 seconds unless it's a confirmation alert
+    // Auto hide for non-action alerts
     if (!options.showActions) {
       setTimeout(() => {
         hideAlert();
-      }, 3000);
+      }, options.duration || 3000);
     }
   };
 
   const hideAlert = () => {
-    Animated.timing(alertAnim, {
-      toValue: -100,
-      duration: 300,
+    Animated.timing(alertScaleAnim, {
+      toValue: 0,
+      duration: 200,
       useNativeDriver: true,
     }).start(() => {
       setShowAlert(false);
-      if (alertConfig.onConfirm) {
-        alertConfig.onConfirm();
-      }
+      setAlertConfig({});
     });
   };
 
@@ -113,14 +139,7 @@ export default function Profile() {
         const parsed = JSON.parse(data);
         setUser(parsed.user);
         setTempUser(parsed.user);
-        // Check if user is already a seller
         setIsSeller(parsed.user?.isSeller || false);
-        // Check if user has multiple roles - JUST SET THE CAPABILITY, DON'T SHOW MODAL
-        // Remove this line: setShowRoleSwitch(parsed.user?.roles?.length > 1 || false);
-        
-        // Instead, we'll just log it for debugging
-        const hasMultipleRoles = parsed.user?.roles?.length > 1;
-        console.log("User has multiple roles:", hasMultipleRoles);
       }
     } catch (err) {
       console.warn("Error loading profile:", err);
@@ -143,9 +162,11 @@ export default function Profile() {
     setEditingField(field);
     setEditValue(value || "");
     setEditModalVisible(true);
-    Animated.timing(slideAnim, {
+    slideAnim.setValue(300);
+    Animated.spring(slideAnim, {
       toValue: 0,
-      duration: 300,
+      tension: 100,
+      friction: 8,
       useNativeDriver: true,
     }).start();
   };
@@ -163,73 +184,103 @@ export default function Profile() {
     });
   };
 
-  // FIXED: Role modal animation - only show when explicitly opened
+  // Role Switch Modal
   const openRoleSwitch = () => {
     setShowRoleSwitch(true);
-    // Reset animation value first
-    roleSwitchAnim.setValue(-300);
-    Animated.timing(roleSwitchAnim, {
-      toValue: 0,
-      duration: 300,
+    fadeAnim.setValue(0);
+    Animated.spring(fadeAnim, {
+      toValue: 1,
+      tension: 100,
+      friction: 8,
       useNativeDriver: true,
     }).start();
   };
 
   const closeRoleSwitch = () => {
-    Animated.timing(roleSwitchAnim, {
-      toValue: -300,
-      duration: 300,
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 200,
       useNativeDriver: true,
     }).start(() => {
       setShowRoleSwitch(false);
     });
   };
 
-  // FIXED: Improved role switching with better mobile alert support
+  // FIXED: Role switching with iOS-compatible alerts
   const handleRoleSwitch = async (newRole) => {
     try {
-      await switchRole(newRole);
-      setCurrentRole(newRole);
+      console.log("🔄 Starting role switch to:", newRole);
+      
       closeRoleSwitch();
       
-      // Determine the correct redirect path based on role
-      let redirectPath;
-      switch(newRole) {
-        case 'Seller':
-          redirectPath = '/seller/(tabs)/dashboard';
-          break;
-        case 'admin':
-          redirectPath = '/admin/(tabs)/dashboard';  
-          break;
-        case 'user':
-        default:
-          redirectPath = '/buyer/(tabs)/marketplace';
-      }
-      
-      // IMPROVED: Show success message with better mobile compatibility
-      setTimeout(() => {
-        showCustomAlert(
-          "🎭 Role Switched", 
-          `You are now viewing the ${getRoleDisplayName(newRole)} dashboard`,
-          "success",
-          {
-            showActions: true,
-            confirmText: "Continue",
-            onConfirm: () => {
-              console.log("Redirecting to:", redirectPath);
-              router.replace(redirectPath);
+      // Use the enhanced alert system
+      showCustomAlert(
+        "🎭 Switch Dashboard?", 
+        `Are you sure you want to switch to ${getRoleDisplayName(newRole)} dashboard?`,
+        "info",
+        {
+          showActions: true,
+          confirmText: "Continue",
+          cancelText: "Cancel",
+          onConfirm: async () => {
+            console.log("✅ User confirmed role switch to:", newRole);
+            
+            try {
+              await switchRole(newRole);
+              setCurrentRole(newRole);
+              
+              let redirectPath;
+              switch(newRole.toLowerCase()) {
+                case 'seller':
+                  redirectPath = '/seller/(tabs)/dashboard';
+                  break;
+                case 'admin':
+                  redirectPath = '/admin/(tabs)/dashboard';  
+                  break;
+                case 'user':
+                default:
+                  redirectPath = '/buyer/(tabs)/marketplace';
+              }
+              
+              console.log("🎯 Redirecting to:", redirectPath);
+              
+              // Show success message
+              showCustomAlert(
+                "✅ Success!", 
+                `You are now viewing the ${getRoleDisplayName(newRole)} dashboard`,
+                "success",
+                {
+                  showActions: false,
+                  duration: 1500
+                }
+              );
+              
+              setTimeout(() => {
+                router.replace(redirectPath);
+              }, 1600);
+              
+            } catch (switchError) {
+              console.error("❌ Error during role switch:", switchError);
+              showCustomAlert(
+                "Error", 
+                "Failed to switch role. Please try again.", 
+                "error"
+              );
             }
+          },
+          onCancel: () => {
+            console.log("❌ User cancelled role switch");
           }
-        );
-      }, 100); // Small delay to ensure modal is closed
+        }
+      );
       
     } catch (error) {
-      console.error("Error switching role:", error);
+      console.error("❌ Error in role switch flow:", error);
       showCustomAlert("Error", "Failed to switch role. Please try again.", "error");
     }
   };
 
-  // SIMPLIFIED PROFILE UPDATE FUNCTION
+  // Profile update function
   const updateProfileDirectly = async (field, value) => {
     try {
       let token;
@@ -244,10 +295,7 @@ export default function Profile() {
         return false;
       }
 
-      const payload = {
-        [field]: value
-      };
-
+      const payload = { [field]: value };
       console.log("📤 Sending PATCH to /profile with:", payload);
 
       const response = await fetch(
@@ -266,17 +314,6 @@ export default function Profile() {
 
       if (!response.ok) {
         console.error("❌ Update failed with status:", response.status);
-        
-        // Check if it's the specific UUID error
-        if (responseText.includes('d86a837b-c370-48bb-82e2-5540025d9133')) {
-          console.error("🚨 BACKEND BUG DETECTED: Wrong UUID being processed");
-          showCustomAlert(
-            "Temporary Issue", 
-            "Profile updates are temporarily unavailable due to a server issue. Our team has been notified and is working on a fix.",
-            "error"
-          );
-        }
-        
         return false;
       }
 
@@ -288,7 +325,6 @@ export default function Profile() {
     }
   };
 
-  // SIMPLIFIED HANDLE SAVE
   const handleSave = async () => {
     if (!editValue || !editValue.trim() || !editingField) {
       showCustomAlert("Validation Error", "Please enter a valid value", "warning");
@@ -297,12 +333,9 @@ export default function Profile() {
 
     setIsSaving(true);
     try {
-      console.log("🔄 Updating field:", editingField, "with value:", editValue.trim());
-      
       const updateSuccess = await updateProfileDirectly(editingField, editValue.trim());
       
       if (updateSuccess) {
-        // Update local state only if API call succeeds
         const updatedUser = {
           ...tempUser,
           [editingField]: editValue.trim()
@@ -310,7 +343,6 @@ export default function Profile() {
         setTempUser(updatedUser);
         setUser(updatedUser);
 
-        // Update local storage
         const userData = await getItem("user_data");
         if (userData) {
           const parsed = JSON.parse(userData);
@@ -341,7 +373,8 @@ export default function Profile() {
     }
   };
 
-  const handleLogout = async () => {
+  // FIXED: Logout with iOS-compatible alert
+  const handleLogout = () => {
     showCustomAlert(
       "🚪 Logout", 
       "Are you sure you want to logout?",
@@ -559,80 +592,94 @@ export default function Profile() {
 
   return (
     <View style={styles.container}>
-      {/* IMPROVED Custom Alert - Better mobile support */}
-      <Modal
-        visible={showAlert}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={hideAlert}
-        statusBarTranslucent={true}
-      >
-        <TouchableWithoutFeedback onPress={alertConfig.showActions ? undefined : hideAlert}>
-          <View style={styles.alertOverlay}>
-            <Animated.View 
-              style={[
-                styles.alertContainer,
-                { 
-                  transform: [{ translateY: alertAnim }],
-                  backgroundColor: alertConfig.type === "success" ? "#F0F9FF" : 
-                                 alertConfig.type === "error" ? "#FEF2F2" : 
-                                 alertConfig.type === "warning" ? "#FFFBEB" : "#F0F9FF"
-                }
-              ]}
-            >
-              <View style={[
-                styles.alertIconContainer,
-                { backgroundColor: alertConfig.type === "success" ? "#10B981" : 
-                                 alertConfig.type === "error" ? "#DC2626" : 
-                                 alertConfig.type === "warning" ? "#F59E0B" : "#7C3AED" }
-              ]}>
-                <Ionicons 
-                  name={alertConfig.icon} 
-                  size={24} 
-                  color="#FFFFFF" 
-                />
-              </View>
-              
-              <View style={styles.alertContent}>
-                <Text style={styles.alertTitle}>{alertConfig.title}</Text>
-                <Text style={styles.alertMessage}>{alertConfig.message}</Text>
+      {/* Custom Alert Modal - Only show for non-iOS or non-action alerts */}
+      {Platform.OS !== 'ios' && (
+        <Modal
+          visible={showAlert}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={hideAlert}
+          statusBarTranslucent={true}
+        >
+          <TouchableWithoutFeedback onPress={alertConfig.showActions ? undefined : hideAlert}>
+            <View style={styles.alertOverlay}>
+              <Animated.View 
+                style={[
+                  styles.alertContainer,
+                  { 
+                    transform: [{
+                      scale: alertScaleAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.8, 1]
+                      })
+                    }],
+                    opacity: alertScaleAnim,
+                    backgroundColor: alertConfig.type === "success" ? "#F0F9FF" : 
+                                   alertConfig.type === "error" ? "#FEF2F2" : 
+                                   alertConfig.type === "warning" ? "#FFFBEB" : "#F0F9FF"
+                  }
+                ]}
+              >
+                <View style={[
+                  styles.alertIconContainer,
+                  { backgroundColor: alertConfig.type === "success" ? "#10B981" : 
+                                   alertConfig.type === "error" ? "#DC2626" : 
+                                   alertConfig.type === "warning" ? "#F59E0B" : "#7C3AED" }
+                ]}>
+                  <Ionicons 
+                    name={alertConfig.icon} 
+                    size={24} 
+                    color="#FFFFFF" 
+                  />
+                </View>
                 
-                {alertConfig.showActions && (
-                  <View style={styles.alertActions}>
-                    {alertConfig.cancelText && (
+                <View style={styles.alertContent}>
+                  <Text style={styles.alertTitle}>{alertConfig.title}</Text>
+                  <Text style={styles.alertMessage}>{alertConfig.message}</Text>
+                  
+                  {alertConfig.showActions && (
+                    <View style={styles.alertActions}>
+                      {alertConfig.cancelText && (
+                        <TouchableOpacity 
+                          style={styles.alertCancelButton}
+                          onPress={() => {
+                            hideAlert();
+                            alertConfig.onCancel?.();
+                          }}
+                        >
+                          <Text style={styles.alertCancelText}>{alertConfig.cancelText}</Text>
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity 
-                        style={styles.alertCancelButton}
-                        onPress={hideAlert}
+                        style={[
+                          styles.alertConfirmButton,
+                          { backgroundColor: alertConfig.type === "success" ? "#10B981" : 
+                                          alertConfig.type === "error" ? "#DC2626" : 
+                                          alertConfig.type === "warning" ? "#F59E0B" : "#7C3AED" }
+                        ]}
+                        onPress={() => {
+                          hideAlert();
+                          alertConfig.onConfirm?.();
+                        }}
                       >
-                        <Text style={styles.alertCancelText}>{alertConfig.cancelText}</Text>
+                        <Text style={styles.alertConfirmText}>
+                          {alertConfig.confirmText || "OK"}
+                        </Text>
                       </TouchableOpacity>
-                    )}
-                    <TouchableOpacity 
-                      style={[
-                        styles.alertConfirmButton,
-                        { backgroundColor: alertConfig.type === "success" ? "#10B981" : 
-                                         alertConfig.type === "error" ? "#DC2626" : 
-                                         alertConfig.type === "warning" ? "#F59E0B" : "#7C3AED" }
-                      ]}
-                      onPress={hideAlert}
-                    >
-                      <Text style={styles.alertConfirmText}>
-                        {alertConfig.confirmText || "OK"}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                    </View>
+                  )}              
+                </View>
+                
+                {!alertConfig.showActions && (
+                  <TouchableOpacity onPress={hideAlert} style={styles.alertCloseButton}>
+                    <Ionicons name="close" size={20} color="#6B7280" />
+                  </TouchableOpacity>
                 )}
-              </View>
-              
-              {!alertConfig.showActions && (
-                <TouchableOpacity onPress={hideAlert} style={styles.alertCloseButton}>
-                  <Ionicons name="close" size={20} color="#6B7280" />
-                </TouchableOpacity>
-              )}
-            </Animated.View>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+              </Animated.View>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
 
       {/* HEADER SECTION */}
       <View style={styles.header}>
@@ -691,7 +738,7 @@ export default function Profile() {
 
       {/* MAIN CONTENT SCROLLVIEW */}
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* SELLER REGISTRATION CTA - Only show for users with "user" role only */}
+        {/* SELLER REGISTRATION CTA */}
         {!isSeller && currentRole === 'user' && user.roles?.length === 1 && (
           <View style={styles.section}>
             <TouchableOpacity 
@@ -953,7 +1000,7 @@ export default function Profile() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* FIXED: Role Switch Modal - Only shows when explicitly opened */}
+      {/* Role Switch Modal */}
       <Modal
         visible={showRoleSwitch}
         transparent={true}
@@ -966,7 +1013,15 @@ export default function Profile() {
             <Animated.View 
               style={[
                 styles.roleModalContent,
-                { transform: [{ translateY: roleSwitchAnim }] }
+                { 
+                  opacity: fadeAnim,
+                  transform: [{
+                    scale: fadeAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.9, 1]
+                    })
+                  }]
+                }
               ]}
             >
               <View style={styles.roleModalHeader}>
@@ -1273,15 +1328,6 @@ const styles = StyleSheet.create({
     marginRight: 8,
     flex: 1,
   },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
   settingsValue: {
     fontSize: 14,
     color: "#6B7280",
@@ -1394,25 +1440,24 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   // Role Switch Modal Styles
-  // Role Switch Modal Styles
   roleModalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "flex-start",
-    paddingTop: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
   },
   roleModalContent: {
     backgroundColor: "white",
-    marginHorizontal: 20,
     borderRadius: 20,
     padding: 20,
+    width: "100%",
+    maxWidth: 400,
     elevation: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
-    maxHeight: '80%', // Prevent modal from being too tall
-    marginTop: 100,
   },
   roleModalHeader: {
     flexDirection: "row",
@@ -1477,7 +1522,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6B7280",
   },
-  // Custom Alert Styles
+  // Alert Styles
   alertOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
