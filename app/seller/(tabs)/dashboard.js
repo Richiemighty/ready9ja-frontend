@@ -2,8 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import api from '../../../constants/api';
-import { useAuth } from '../../../hooks/useAuth';
+import api from '../../../constants/api'; // Fixed import path
+import { useAuth } from '../../../hooks/useAuth'; // Fixed import path
 
 export default function SellerDashboard() {
   const router = useRouter();
@@ -92,7 +92,7 @@ export default function SellerDashboard() {
       title: 'Add New Product',
       icon: 'add-circle-outline',
       color: '#10B981',
-      route: '/seller/products/add'
+      route: '/seller/createProduct'
     },
     {
       title: 'View Orders',
@@ -110,7 +110,7 @@ export default function SellerDashboard() {
       title: 'Store Settings',
       icon: 'settings-outline',
       color: '#6B7280',
-      route: '/seller/settings'
+      route: '/seller/storesettings'
     }
   ];
 

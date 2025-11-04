@@ -33,40 +33,73 @@ export default function SellerTabsLayout() {
     }
   };
 
-  // Seller Header Component
-  const SellerHeader = () => (
-    <View style={styles.headerContainer}>
-      <View style={styles.headerLeft}>
-        <Image
-          source={{
-            uri: user?.avatar || `https://ui-avatars.com/api/?name=${
-              encodeURIComponent(user?.firstname || 'Seller')
-            }&background=7C3AED&color=fff&size=100`
-          }}
-          style={styles.userAvatar}
-        />
-        <View style={styles.userInfo}>
-          <Text style={styles.greeting}>Welcome back,</Text>
-          <Text style={styles.userName}>
-            {user?.firstname || 'Seller'}
-          </Text>
+  const getRoleDisplayName = (role) => {
+    const roleNames = {
+      user: "Buyer",
+      seller: "Seller", 
+      admin: "Admin"
+    };
+    return roleNames[role] || role;
+  };
+
+  // Custom Header Left Component for Dashboard (User Profile)
+  const DashboardHeaderLeft = () => (
+    <TouchableOpacity 
+      style={styles.userProfileSection}
+      onPress={() => router.push('/seller/profile')}
+    >
+      <Image
+        source={{
+          uri: user?.avatar || `https://ui-avatars.com/api/?name=${
+            encodeURIComponent(user?.firstname || 'Seller')
+          }&background=7C3AED&color=fff&size=100`
+        }}
+        style={styles.userAvatar}
+      />
+      <View style={styles.userInfo}>
+        <Text style={styles.greeting}>Welcome back,</Text>
+        <Text style={styles.userName}>
+          {user?.firstname || 'Seller'}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  // Custom Header Right Component for Dashboard (Shortcut Icons)
+  const DashboardHeaderRight = () => (
+    <View style={styles.shortcutIcons}>
+      {/* Notifications */}
+      <TouchableOpacity 
+        style={styles.iconButton}
+        onPress={() => router.push('/seller/notifications')}
+      >
+        <Ionicons name="notifications-outline" size={22} color="#7C3AED" />
+        <View style={styles.notificationBadge}>
+          <Text style={styles.badgeText}>5</Text>
         </View>
-      </View>
-      <View style={styles.headerRight}>
-        <TouchableOpacity 
-          style={styles.iconButton}
-          onPress={() => router.push('/seller/notifications')}
-        >
-          <Ionicons name="notifications-outline" size={22} color="#7C3AED" />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.iconButton}
-          onPress={() => router.push('/seller/settings')}
-        >
-          <Ionicons name="settings-outline" size={22} color="#7C3AED" />
-        </TouchableOpacity>
-      </View>
+      </TouchableOpacity>
+
+      {/* Settings */}
+      <TouchableOpacity 
+        style={styles.iconButton}
+        onPress={() => router.push('/seller/settings')}
+      >
+        <Ionicons name="settings-outline" size={22} color="#7C3AED" />
+      </TouchableOpacity>
     </View>
+  );
+
+  // Default Header Right for other tabs
+  const DefaultHeaderRight = () => (
+    <TouchableOpacity 
+      style={styles.roleBadge}
+      onPress={() => router.push('/seller/profile')}
+    >
+      <Ionicons name="person-circle-outline" size={20} color="#7C3AED" />
+      <Text style={styles.roleText}>
+        {getRoleDisplayName(currentRole)}
+      </Text>
+    </TouchableOpacity>
   );
 
   return (
@@ -88,26 +121,32 @@ export default function SellerTabsLayout() {
         },
         tabBarStyle: {
           paddingBottom: 8,
-          height: 60,
+          height: 85,
           borderTopWidth: 1,
           borderTopColor: '#E5E7EB'
         },
-        headerRight: () => (
-          <View style={{ marginRight: 16 }}>
-            <Text style={styles.roleBadge}>Seller</Text>
-          </View>
-        ),
+        headerRight: () => <DefaultHeaderRight />,
       }}
     >
       <Tabs.Screen
         name="dashboard"
         options={{
-          title: "Seller Dashboard",
+          title: "Dashboard",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="grid-outline" size={size} color={color} />
           ),
-          headerTitle: () => <SellerHeader />,
-          headerTitleAlign: 'left',
+          headerTitle: "Dashboard",
+          headerTitleAlign: 'center',
+          headerLeft: () => <DashboardHeaderLeft />,
+          headerRight: () => <DashboardHeaderRight />,
+          headerStyle: {
+            backgroundColor: '#FFFFFF',
+            height: 120,
+            elevation: 0,
+            shadowOpacity: 0,
+            borderBottomWidth: 1,
+            borderBottomColor: '#E5E7EB'
+          },
         }}
       />
       <Tabs.Screen
@@ -137,22 +176,25 @@ export default function SellerTabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          headerShown: false,
+          tabBarButton: () => null, // Hide from tab bar
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person-circle-outline" size={size} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
 
 const styles = {
-  headerContainer: {
+  userProfileSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    paddingHorizontal: 16,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+    marginLeft: 16,
   },
   userAvatar: {
     width: 40,
@@ -175,10 +217,11 @@ const styles = {
     fontWeight: 'bold',
     marginTop: 2,
   },
-  headerRight: {
+  shortcutIcons: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    marginRight: 16,
   },
   iconButton: {
     width: 40,
@@ -187,14 +230,39 @@ const styles = {
     backgroundColor: '#F5F3FF',
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#EF4444',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   roleBadge: {
-    backgroundColor: '#7C3AED',
-    color: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F3FF',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    fontSize: 12,
+    marginRight: 16,
+    borderWidth: 1,
+    borderColor: '#DDD6FE'
+  },
+  roleText: {
+    marginLeft: 6,
+    color: '#7C3AED',
     fontWeight: '600',
+    fontSize: 12,
   },
 };
