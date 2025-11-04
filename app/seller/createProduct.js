@@ -1,5 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import { useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -7,6 +10,7 @@ import {
     Animated,
     Image,
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Switch,
@@ -41,11 +45,45 @@ export default function AddProduct() {
   const [currentTag, setCurrentTag] = useState("");
   const [currentCategory, setCurrentCategory] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
-  const [imageUrl, setImageUrl] = useState(""); // For manual image URL input
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
+
+  // Get token from storage
+  const getTokenFromStorage = async () => {
+    try {
+      let token;
+      if (Platform.OS === "web") {
+        token = await AsyncStorage.getItem("access_token");
+      } else {
+        token = await SecureStore.getItemAsync("access_token");
+      }
+      
+      console.log('Retrieved token:', token ? `Length: ${token.length}` : 'No token');
+      
+      if (!token) {
+        // Try to get from user_data as fallback
+        let userData;
+        if (Platform.OS === "web") {
+          userData = await AsyncStorage.getItem("user_data");
+        } else {
+          userData = await SecureStore.getItemAsync("user_data");
+        }
+        
+        if (userData) {
+          const parsed = JSON.parse(userData);
+          token = parsed.accessToken;
+          console.log('Fallback token from user_data:', token ? `Length: ${token.length}` : 'No token');
+        }
+      }
+      
+      return token;
+    } catch (error) {
+      console.error("Error getting token from storage:", error);
+      return null;
+    }
+  };
 
   // Handle form input changes
   const handleInputChange = (field, value) => {
@@ -74,62 +112,7 @@ export default function AddProduct() {
     }));
   };
 
-  // COMMENTED OUT: Cloudinary upload function
-  /*
-  const uploadImageToCloudinary = async (imageUri) => {
-    try {
-      // Get the file name from the URI
-      const filename = imageUri.split('/').pop();
-      
-      // Determine the MIME type
-      const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `image/${match[1]}` : 'image/jpeg';
-
-      const formData = new FormData();
-      
-      // Append the file correctly for React Native
-      formData.append('file', {
-        uri: imageUri,
-        type: type,
-        name: filename || 'product-image.jpg'
-      });
-      
-      formData.append('upload_preset', 'READY9JA');
-      formData.append('cloud_name', 'djock9yc0');
-
-      console.log('Uploading to Cloudinary...', {
-        upload_preset: 'READY9JA',
-        cloud_name: 'djock9yc0'
-      });
-
-      const response = await fetch('https://api.cloudinary.com/v1_1/djock9yc0/image/upload', {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      const data = await response.json();
-      
-      console.log('Cloudinary response:', data);
-      
-      if (data.secure_url) {
-        console.log('Image uploaded successfully:', data.secure_url);
-        return data.secure_url;
-      } else {
-        console.error('Cloudinary upload failed:', data);
-        throw new Error(data.error?.message || 'Image upload failed');
-      }
-    } catch (error) {
-      console.error('Cloudinary upload error:', error);
-      throw error;
-    }
-  };
-  */
-
-  // COMMENTED OUT: Image picker with Cloudinary upload
-  /*
+  // Pick images from device
   const pickImages = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -148,70 +131,16 @@ export default function AddProduct() {
       });
 
       if (!result.canceled && result.assets) {
-        setImageUploading(true);
-        
-        try {
-          const uploadedImageUrls = [];
-          
-          for (const asset of result.assets) {
-            if (form.images.length + uploadedImageUrls.length >= 10) {
-              Alert.alert('Limit reached', 'You can only upload up to 10 images');
-              break;
-            }
-            
-            try {
-              console.log('Uploading image:', asset.uri);
-              const uploadedUrl = await uploadImageToCloudinary(asset.uri);
-              uploadedImageUrls.push(uploadedUrl);
-            } catch (uploadError) {
-              console.error('Failed to upload image:', uploadError);
-              Alert.alert('Upload Error', `Failed to upload one image: ${uploadError.message}`);
-            }
-          }
-          
-          if (uploadedImageUrls.length > 0) {
-            setForm(prev => ({
-              ...prev,
-              images: [...prev.images, ...uploadedImageUrls]
-            }));
-            Alert.alert('Success', `Successfully uploaded ${uploadedImageUrls.length} images!`);
-          }
-          
-        } catch (error) {
-          console.error('Upload process error:', error);
-          Alert.alert('Upload Error', 'Failed to upload images. Please try again.');
-        } finally {
-          setImageUploading(false);
-        }
+        const newImages = result.assets.map(asset => asset.uri);
+        setForm(prev => ({
+          ...prev,
+          images: [...prev.images, ...newImages]
+        }));
+        Alert.alert('Success', `Added ${newImages.length} images!`);
       }
     } catch (error) {
       console.error('Error picking images:', error);
       Alert.alert('Error', 'Failed to pick images. Please try again.');
-      setImageUploading(false);
-    }
-  };
-  */
-
-  // Add image via URL
-  const addImageByUrl = () => {
-    if (imageUrl.trim() && !form.images.includes(imageUrl.trim())) {
-      // Basic URL validation
-      if (!imageUrl.trim().startsWith('http')) {
-        Alert.alert('Invalid URL', 'Please enter a valid image URL starting with http:// or https://');
-        return;
-      }
-
-      if (form.images.length >= 10) {
-        Alert.alert('Limit reached', 'You can only add up to 10 images');
-        return;
-      }
-
-      setForm(prev => ({
-        ...prev,
-        images: [...prev.images, imageUrl.trim()]
-      }));
-      setImageUrl("");
-      Alert.alert('Success', 'Image URL added successfully!');
     }
   };
 
@@ -271,52 +200,202 @@ export default function AddProduct() {
     return true;
   };
 
-  // Submit form to API
+  // Get file name from URI
+  const getFileNameFromUri = (uri) => {
+    return uri.split('/').pop();
+  };
+
+  // Get MIME type from URI
+  const getMimeTypeFromUri = (uri) => {
+    const extension = uri.split('.').pop().toLowerCase();
+    const mimeTypes = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+    };
+    return mimeTypes[extension] || 'image/jpeg';
+  };
+
+  // Main product submission using XMLHttpRequest (better for file uploads)
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
     setLoading(true);
     
     try {
-      // Prepare data for API
-      const productData = {
-        name: form.name.trim(),
-        description: form.description.trim(),
-        price: parseFloat(form.price),
-        stock: parseInt(form.stock),
-        status: form.status,
-        tags: form.tags.join(','),
-        categories: form.categories,
-        sku: form.sku.trim(),
-        slug: form.slug.trim(),
-        discount: parseFloat(form.discount) || 0,
-        images: form.images // Using direct image URLs
-      };
+      const token = await getTokenFromStorage();
+      
+      if (!token) {
+        Alert.alert('Authentication Required', 'Please login to create products.');
+        setLoading(false);
+        return;
+      }
 
-      console.log('Submitting product:', productData);
+      console.log('Creating FormData with token:', token.substring(0, 20) + '...');
 
+      // Create FormData object
+      const formData = new FormData();
+
+      // Append all fields as form data
+      formData.append('name', form.name.trim());
+      formData.append('description', form.description.trim());
+      formData.append('price', parseFloat(form.price).toString());
+      formData.append('stock', parseInt(form.stock).toString());
+      formData.append('status', form.status.toString());
+      formData.append('tags', form.tags.join(','));
+      formData.append('categories', form.categories.join(','));
+      formData.append('sku', form.sku.trim());
+      formData.append('slug', form.slug.trim());
+      formData.append('discount', (parseFloat(form.discount) || 0).toString());
+
+      // Append images as files
+      form.images.forEach((imageUri, index) => {
+        const fileName = getFileNameFromUri(imageUri);
+        const mimeType = getMimeTypeFromUri(imageUri);
+        
+        formData.append('images', {
+          uri: imageUri,
+          type: mimeType,
+          name: fileName || `product-image-${index}.jpg`
+        });
+      });
+
+      console.log('FormData created, submitting to API via XHR...');
+
+      // Use XMLHttpRequest for better FormData support
+      const xhr = new XMLHttpRequest();
+      
+      return new Promise((resolve, reject) => {
+        xhr.open('POST', 'https://ready9ja-api.onrender.com/api/v1/products');
+        xhr.setRequestHeader('Accept', '*/*');
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        
+        xhr.onload = function() {
+          console.log('XHR Response status:', xhr.status);
+          
+          try {
+            const result = JSON.parse(xhr.responseText);
+            console.log('XHR Response:', result);
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+              console.log('Product created successfully:', result);
+              setShowSuccessModal(true);
+              resolve(result);
+            } else {
+              console.error('XHR API Error response:', result);
+              
+              // If XHR fails, try alternative method
+              if (xhr.status === 401 || xhr.status === 500) {
+                Alert.alert(
+                  'Upload Failed', 
+                  'Trying alternative upload method...',
+                  [
+                    {
+                      text: 'OK',
+                      onPress: () => tryAlternativeUploadMethod()
+                    }
+                  ]
+                );
+              } else {
+                reject(new Error(result.message || `Failed to create product: ${xhr.status}`));
+              }
+            }
+          } catch (parseError) {
+            console.error('XHR Parse error:', parseError);
+            reject(new Error('Failed to parse response'));
+          }
+        };
+        
+        xhr.onerror = function() {
+          console.error('XHR Network error');
+          Alert.alert(
+            'Network Error', 
+            'Trying alternative upload method...',
+            [
+              {
+                text: 'OK',
+                onPress: () => tryAlternativeUploadMethod()
+              }
+            ]
+          );
+        };
+        
+        xhr.ontimeout = function() {
+          console.error('XHR Timeout');
+          reject(new Error('Request timeout'));
+        };
+        
+        console.log('Sending XHR request with FormData...');
+        xhr.send(formData);
+      });
+      
+    } catch (error) {
+      console.error('Product creation error:', error);
+      Alert.alert('Error', error.message || 'Failed to create product. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Alternative upload method using fetch
+  const tryAlternativeUploadMethod = async () => {
+    try {
+      setLoading(true);
+      const token = await getTokenFromStorage();
+      
+      console.log('Trying alternative upload method with fetch...');
+      
+      const formData = new FormData();
+      
+      // Append all fields
+      formData.append('name', form.name.trim());
+      formData.append('description', form.description.trim());
+      formData.append('price', parseFloat(form.price).toString());
+      formData.append('stock', parseInt(form.stock).toString());
+      formData.append('status', form.status.toString());
+      formData.append('tags', form.tags.join(','));
+      formData.append('categories', form.categories.join(','));
+      formData.append('sku', form.sku.trim());
+      formData.append('slug', form.slug.trim());
+      formData.append('discount', (parseFloat(form.discount) || 0).toString());
+
+      // Append images
+      form.images.forEach((imageUri, index) => {
+        const fileName = getFileNameFromUri(imageUri);
+        const mimeType = getMimeTypeFromUri(imageUri);
+        
+        formData.append('images', {
+          uri: imageUri,
+          type: mimeType,
+          name: fileName || `product-image-${index}.jpg`
+        });
+      });
+
+      // Don't set Content-Type header - let React Native set it with boundary
       const response = await fetch('https://ready9ja-api.onrender.com/api/v1/products', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user?.token}`,
+          'Accept': '*/*',
+          'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify(productData),
+        body: formData,
       });
 
       const result = await response.json();
+      console.log('Alternative method response:', response.status, result);
 
       if (response.ok) {
-        console.log('Product created successfully:', result);
+        console.log('Product created successfully via alternative method:', result);
         setShowSuccessModal(true);
       } else {
-        console.error('API Error response:', result);
         throw new Error(result.message || `Failed to create product: ${response.status}`);
       }
       
     } catch (error) {
-      console.error('API Error:', error);
-      Alert.alert('Error', error.message || 'Failed to create product. Please try again.');
+      console.error('Alternative method error:', error);
+      Alert.alert('Upload Failed', error.message || 'Please try again with smaller images or check your connection.');
     } finally {
       setLoading(false);
     }
@@ -337,7 +416,6 @@ export default function AddProduct() {
       discount: "0",
       images: []
     });
-    setImageUrl("");
     setShowSuccessModal(false);
   };
 
@@ -378,6 +456,7 @@ export default function AddProduct() {
           <TouchableOpacity 
             style={styles.backButton}
             onPress={() => router.back()}
+            disabled={loading}
           >
             <Ionicons name="arrow-back" size={24} color="#7C3AED" />
           </TouchableOpacity>
@@ -389,91 +468,47 @@ export default function AddProduct() {
           Fill in the details below to list your product on Ready9ja
         </Text>
 
-        {/* Product Images - UPDATED FOR URL INPUT */}
+        {/* Product Images */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
             Product Images {form.images.length > 0 && `(${form.images.length})`}
           </Text>
           <Text style={styles.sectionSubtitle}>
-            Add product image URLs (Max 10 images)
+            Upload product images from your device (Max 10 images)
           </Text>
 
-          {/* Image URL Input */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Image URL</Text>
-            <View style={styles.tagInputContainer}>
-              <TextInput
-                style={[styles.input, styles.tagInput]}
-                placeholder="https://example.com/image.jpg"
-                value={imageUrl}
-                onChangeText={setImageUrl}
-                onSubmitEditing={addImageByUrl}
-                keyboardType="url"
-                autoCapitalize="none"
-              />
-              <TouchableOpacity 
-                style={styles.addTagButton}
-                onPress={addImageByUrl}
-                disabled={!imageUrl.trim()}
-              >
-                <Ionicons 
-                  name="add" 
-                  size={20} 
-                  color={imageUrl.trim() ? "#7C3AED" : "#9CA3AF"} 
-                />
-              </TouchableOpacity>
-            </View>
-            <Text style={[styles.sectionSubtitle, {fontSize: 12, marginTop: 4}]}>
-              Enter full image URL (e.g., https://res.cloudinary.com/.../image.jpg)
-            </Text>
-          </View>
-
-          {/* Image Previews */}
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
             style={styles.imagesContainer}
           >
-            {/* Add Image Placeholder */}
-            <View style={styles.addImageButton}>
-              <Ionicons name="link-outline" size={32} color="#7C3AED" />
-              <Text style={styles.addImageText}>Add URL</Text>
+            {/* Add Image Button */}
+            <TouchableOpacity 
+              style={[styles.addImageButton, loading && styles.disabledButton]}
+              onPress={pickImages}
+              disabled={form.images.length >= 10 || loading}
+            >
+              <Ionicons name="camera-outline" size={32} color="#7C3AED" />
+              <Text style={styles.addImageText}>Add Images</Text>
               <Text style={styles.imageCount}>
                 {form.images.length}/10
               </Text>
-            </View>
+            </TouchableOpacity>
 
             {/* Image Previews */}
             {form.images.map((image, index) => (
               <View key={index} style={styles.imagePreviewContainer}>
-                <Image 
-                  source={{ uri: image }} 
-                  style={styles.imagePreview} 
-                  onError={() => {
-                    console.log('Failed to load image:', image);
-                    Alert.alert('Image Error', `Failed to load image: ${image}`);
-                  }}
-                />
+                <Image source={{ uri: image }} style={styles.imagePreview} />
                 <TouchableOpacity 
                   style={styles.removeImageButton}
                   onPress={() => removeImage(image)}
+                  disabled={loading}
                 >
                   <Ionicons name="close-circle" size={20} color="#DC2626" />
                 </TouchableOpacity>
               </View>
             ))}
           </ScrollView>
-
-          {/* Sample Image URLs for Testing */}
-          <View style={styles.sampleUrlsContainer}>
-            <Text style={styles.sampleUrlsTitle}>Sample Image URLs (for testing):</Text>
-            <TouchableOpacity onPress={() => setImageUrl('https://res.cloudinary.com/djock9yc0/image/upload/v1761630324/READY9JA/lfdrqj0xm2bkcidppt1l.webp')}>
-              <Text style={styles.sampleUrl}>Sample Product Image 1</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setImageUrl('https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400')}>
-              <Text style={styles.sampleUrl}>Sample Product Image 2</Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* Basic Information */}
@@ -483,24 +518,26 @@ export default function AddProduct() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Product Name *</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, loading && styles.disabledInput]}
               placeholder="Enter product name"
               value={form.name}
               onChangeText={(value) => handleInputChange('name', value)}
               onBlur={generateSlug}
+              editable={!loading}
             />
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Description *</Text>
             <TextInput
-              style={[styles.input, styles.textArea]}
+              style={[styles.input, styles.textArea, loading && styles.disabledInput]}
               placeholder="Describe your product features, specifications, etc."
               value={form.description}
               onChangeText={(value) => handleInputChange('description', value)}
               multiline
               numberOfLines={4}
               textAlignVertical="top"
+              editable={!loading}
             />
           </View>
 
@@ -508,22 +545,24 @@ export default function AddProduct() {
             <View style={[styles.inputGroup, styles.halfWidth]}>
               <Text style={styles.label}>Price (₦) *</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, loading && styles.disabledInput]}
                 placeholder="0.00"
                 value={form.price}
                 onChangeText={(value) => handleInputChange('price', formatPrice(value))}
                 keyboardType="decimal-pad"
+                editable={!loading}
               />
             </View>
 
             <View style={[styles.inputGroup, styles.halfWidth]}>
               <Text style={styles.label}>Stock Quantity *</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, loading && styles.disabledInput]}
                 placeholder="0"
                 value={form.stock}
                 onChangeText={(value) => handleInputChange('stock', value.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
+                editable={!loading}
               />
             </View>
           </View>
@@ -532,11 +571,12 @@ export default function AddProduct() {
             <View style={[styles.inputGroup, styles.halfWidth]}>
               <Text style={styles.label}>Discount (%)</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, loading && styles.disabledInput]}
                 placeholder="0"
                 value={form.discount}
                 onChangeText={(value) => handleInputChange('discount', value.replace(/[^0-9.]/g, ''))}
                 keyboardType="decimal-pad"
+                editable={!loading}
               />
             </View>
 
@@ -552,6 +592,7 @@ export default function AddProduct() {
                     onValueChange={(value) => handleInputChange('status', value)}
                     trackColor={{ false: '#D1D5DB', true: '#7C3AED' }}
                     thumbColor="#FFFFFF"
+                    disabled={loading}
                   />
                 </View>
               </View>
@@ -566,30 +607,40 @@ export default function AddProduct() {
           <View style={styles.inputGroup}>
             <View style={styles.labelRow}>
               <Text style={styles.label}>SKU (Stock Keeping Unit)</Text>
-              <TouchableOpacity onPress={generateSKU} style={styles.generateButton}>
+              <TouchableOpacity 
+                onPress={generateSKU} 
+                style={[styles.generateButton, loading && styles.disabledButton]}
+                disabled={loading}
+              >
                 <Text style={styles.generateButtonText}>Generate</Text>
               </TouchableOpacity>
             </View>
             <TextInput
-              style={styles.input}
+              style={[styles.input, loading && styles.disabledInput]}
               placeholder="SKU12345"
               value={form.sku}
               onChangeText={(value) => handleInputChange('sku', value)}
+              editable={!loading}
             />
           </View>
 
           <View style={styles.inputGroup}>
             <View style={styles.labelRow}>
               <Text style={styles.label}>Product Slug</Text>
-              <TouchableOpacity onPress={generateSlug} style={styles.generateButton}>
+              <TouchableOpacity 
+                onPress={generateSlug} 
+                style={[styles.generateButton, loading && styles.disabledButton]}
+                disabled={loading}
+              >
                 <Text style={styles.generateButtonText}>Generate</Text>
               </TouchableOpacity>
             </View>
             <TextInput
-              style={styles.input}
+              style={[styles.input, loading && styles.disabledInput]}
               placeholder="product-name"
               value={form.slug}
               onChangeText={(value) => handleInputChange('slug', value)}
+              editable={!loading}
             />
           </View>
         </View>
@@ -606,21 +657,22 @@ export default function AddProduct() {
             </Text>
             <View style={styles.tagInputContainer}>
               <TextInput
-                style={[styles.input, styles.tagInput]}
+                style={[styles.input, styles.tagInput, loading && styles.disabledInput]}
                 placeholder="Add a category (e.g., Electronics)"
                 value={currentCategory}
                 onChangeText={setCurrentCategory}
                 onSubmitEditing={addCategory}
+                editable={!loading}
               />
               <TouchableOpacity 
-                style={styles.addTagButton}
+                style={[styles.addTagButton, loading && styles.disabledButton]}
                 onPress={addCategory}
-                disabled={!currentCategory.trim()}
+                disabled={!currentCategory.trim() || loading}
               >
                 <Ionicons 
                   name="add" 
                   size={20} 
-                  color={currentCategory.trim() ? "#7C3AED" : "#9CA3AF"} 
+                  color={currentCategory.trim() && !loading ? "#7C3AED" : "#9CA3AF"} 
                 />
               </TouchableOpacity>
             </View>
@@ -634,6 +686,7 @@ export default function AddProduct() {
                     <TouchableOpacity 
                       onPress={() => removeCategory(category)}
                       style={styles.removeTagButton}
+                      disabled={loading}
                     >
                       <Ionicons name="close" size={14} color="#6B7280" />
                     </TouchableOpacity>
@@ -648,21 +701,22 @@ export default function AddProduct() {
             <Text style={styles.label}>Tags</Text>
             <View style={styles.tagInputContainer}>
               <TextInput
-                style={[styles.input, styles.tagInput]}
+                style={[styles.input, styles.tagInput, loading && styles.disabledInput]}
                 placeholder="Add a tag (e.g., smartphone)"
                 value={currentTag}
                 onChangeText={setCurrentTag}
                 onSubmitEditing={addTag}
+                editable={!loading}
               />
               <TouchableOpacity 
-                style={styles.addTagButton}
+                style={[styles.addTagButton, loading && styles.disabledButton]}
                 onPress={addTag}
-                disabled={!currentTag.trim()}
+                disabled={!currentTag.trim() || loading}
               >
                 <Ionicons 
                   name="add" 
                   size={20} 
-                  color={currentTag.trim() ? "#7C3AED" : "#9CA3AF"} 
+                  color={currentTag.trim() && !loading ? "#7C3AED" : "#9CA3AF"} 
                 />
               </TouchableOpacity>
             </View>
@@ -676,6 +730,7 @@ export default function AddProduct() {
                     <TouchableOpacity 
                       onPress={() => removeTag(tag)}
                       style={styles.removeTagButton}
+                      disabled={loading}
                     >
                       <Ionicons name="close" size={14} color="#6B7280" />
                     </TouchableOpacity>
@@ -689,7 +744,7 @@ export default function AddProduct() {
         {/* Action Buttons */}
         <View style={styles.actionsContainer}>
           <TouchableOpacity 
-            style={[styles.button, styles.cancelButton]}
+            style={[styles.button, styles.cancelButton, loading && styles.disabledButton]}
             onPress={() => router.back()}
             disabled={loading}
           >
@@ -697,12 +752,19 @@ export default function AddProduct() {
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={[styles.button, styles.submitButton, loading && styles.submitButtonDisabled]}
+            style={[
+              styles.button, 
+              styles.submitButton, 
+              loading && styles.submitButtonDisabled
+            ]}
             onPress={handleSubmit}
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                <Text style={styles.submitButtonText}>Publishing...</Text>
+              </View>
             ) : (
               <>
                 <Ionicons name="cloud-upload-outline" size={20} color="#FFFFFF" />
@@ -835,6 +897,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     color: '#1F2937',
   },
+  disabledInput: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#D1D5DB',
+    color: '#9CA3AF',
+  },
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
@@ -956,25 +1023,6 @@ const styles = StyleSheet.create({
   removeTagButton: {
     padding: 2,
   },
-  // Sample URLs
-  sampleUrlsContainer: {
-    marginTop: 16,
-    padding: 12,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
-  },
-  sampleUrlsTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginBottom: 8,
-  },
-  sampleUrl: {
-    fontSize: 12,
-    color: '#7C3AED',
-    textDecorationLine: 'underline',
-    marginBottom: 4,
-  },
   // Actions
   actionsContainer: {
     flexDirection: 'row',
@@ -1017,6 +1065,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   // Success Modal
   modalOverlay: {
