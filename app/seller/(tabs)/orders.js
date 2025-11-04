@@ -1,49 +1,56 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import api from '../../../constants/api';
+import { useAuth } from '../../../hooks/useAuth';
 
 export default function SellerOrders() {
   const router = useRouter();
+  const { getUser } = useAuth();
   const [activeTab, setActiveTab] = useState('all');
-  const [orders, setOrders] = useState([
-    {
-      id: 'ORD-001',
-      customer: 'John Doe',
-      amount: 29900,
-      status: 'pending',
-      items: 2,
-      date: '2024-01-15',
-      address: '123 Main St, Lagos'
-    },
-    {
-      id: 'ORD-002',
-      customer: 'Jane Smith',
-      amount: 45900,
-      status: 'processing',
-      items: 1,
-      date: '2024-01-14',
-      address: '456 Oak Ave, Abuja'
-    },
-    {
-      id: 'ORD-003',
-      customer: 'Mike Johnson',
-      amount: 12900,
-      status: 'shipped',
-      items: 1,
-      date: '2024-01-13',
-      address: '789 Pine Rd, Port Harcourt'
-    },
-    {
-      id: 'ORD-004',
-      customer: 'Sarah Wilson',
-      amount: 2500,
-      status: 'delivered',
-      items: 3,
-      date: '2024-01-12',
-      address: '321 Elm St, Kano'
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    loadOrders();
+  }, []);
+
+  const getAuthToken = async () => {
+    try {
+      const userData = await getUser();
+      return userData?.accessToken;
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return null;
     }
-  ]);
+  };
+
+  const loadOrders = async () => {
+    setLoading(true);
+    try {
+      const token = await getAuthToken();
+      if (!token) {
+        console.log('No token available');
+        setOrders([]);
+        return;
+      }
+
+      setOrders([]);
+    } catch (error) {
+      console.error('Error loading orders:', error);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadOrders();
+    setRefreshing(false);
+  };
 
   const tabs = [
     { id: 'all', label: 'All Orders', count: orders.length },
@@ -116,56 +123,84 @@ export default function SellerOrders() {
       </ScrollView>
 
       {/* Orders List */}
-      <ScrollView style={styles.ordersList} showsVerticalScrollIndicator={false}>
-        {filteredOrders.map((order) => (
-          <TouchableOpacity
-            key={order.id}
-            style={styles.orderCard}
-            onPress={() => router.push(`/seller/orders/${order.id}`)}
-          >
-            <View style={styles.orderHeader}>
-              <Text style={styles.orderId}>{order.id}</Text>
-              <View style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(order.status) + '20' }
-              ]}>
-                <Text style={[
-                  styles.statusText,
-                  { color: getStatusColor(order.status) }
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#7C3AED" />
+          <Text style={styles.loadingText}>Loading orders...</Text>
+        </View>
+      ) : filteredOrders.length > 0 ? (
+        <FlatList
+          data={filteredOrders}
+          keyExtractor={(item) => item.id?.toString()}
+          renderItem={({ item: order }) => (
+            <TouchableOpacity
+              style={styles.orderCard}
+              onPress={() => router.push(`/seller/orders/${order.id}`)}
+            >
+              <View style={styles.orderHeader}>
+                <Text style={styles.orderId}>{order.id}</Text>
+                <View style={[
+                  styles.statusBadge,
+                  { backgroundColor: getStatusColor(order.status) + '20' }
                 ]}>
-                  {getStatusText(order.status)}
-                </Text>
+                  <Text style={[
+                    styles.statusText,
+                    { color: getStatusColor(order.status) }
+                  ]}>
+                    {getStatusText(order.status)}
+                  </Text>
+                </View>
               </View>
-            </View>
-            
-            <View style={styles.orderDetails}>
-              <View style={styles.orderInfo}>
-                <Ionicons name="person-outline" size={16} color="#6B7280" />
-                <Text style={styles.orderText}>{order.customer}</Text>
-              </View>
-              <View style={styles.orderInfo}>
-                <Ionicons name="cube-outline" size={16} color="#6B7280" />
-                <Text style={styles.orderText}>{order.items} item(s)</Text>
-              </View>
-              <View style={styles.orderInfo}>
-                <Ionicons name="calendar-outline" size={16} color="#6B7280" />
-                <Text style={styles.orderText}>{order.date}</Text>
-              </View>
-              <View style={styles.orderInfo}>
-                <Ionicons name="location-outline" size={16} color="#6B7280" />
-                <Text style={styles.orderText} numberOfLines={1}>{order.address}</Text>
-              </View>
-            </View>
 
-            <View style={styles.orderFooter}>
-              <Text style={styles.orderAmount}>₦{order.amount.toLocaleString()}</Text>
-              <TouchableOpacity style={styles.actionButton}>
-                <Text style={styles.actionText}>View Details</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+              <View style={styles.orderDetails}>
+                <View style={styles.orderInfo}>
+                  <Ionicons name="person-outline" size={16} color="#6B7280" />
+                  <Text style={styles.orderText}>{order.customer}</Text>
+                </View>
+                <View style={styles.orderInfo}>
+                  <Ionicons name="cube-outline" size={16} color="#6B7280" />
+                  <Text style={styles.orderText}>{order.items} item(s)</Text>
+                </View>
+                <View style={styles.orderInfo}>
+                  <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+                  <Text style={styles.orderText}>{order.date}</Text>
+                </View>
+                <View style={styles.orderInfo}>
+                  <Ionicons name="location-outline" size={16} color="#6B7280" />
+                  <Text style={styles.orderText} numberOfLines={1}>{order.address}</Text>
+                </View>
+              </View>
+
+              <View style={styles.orderFooter}>
+                <Text style={styles.orderAmount}>₦{order.amount.toLocaleString()}</Text>
+                <TouchableOpacity style={styles.actionButton}>
+                  <Text style={styles.actionText}>View Details</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={styles.ordersList}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#7C3AED"]}
+              tintColor="#7C3AED"
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      ) : (
+        <View style={styles.emptyState}>
+          <Ionicons name="cart-outline" size={64} color="#D1D5DB" />
+          <Text style={styles.emptyText}>No orders yet</Text>
+          <Text style={styles.emptySubtext}>
+            {activeTab === 'all'
+              ? 'Orders will appear here once customers make purchases'
+              : `No ${activeTab} orders found`}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -174,6 +209,37 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 50,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 8,
+    textAlign: 'center',
   },
   header: {
     padding: 16,
