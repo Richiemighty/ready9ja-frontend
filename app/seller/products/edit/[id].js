@@ -1,30 +1,32 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Image,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Image,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../../../hooks/useAuth';
 
-export default function AddProduct() {
+export default function EditProduct() {
   const router = useRouter();
+  const { id } = useLocalSearchParams();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   
   // Form state
@@ -45,6 +47,7 @@ export default function AddProduct() {
   const [currentTag, setCurrentTag] = useState("");
   const [currentCategory, setCurrentCategory] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
+  const [originalForm, setOriginalForm] = useState(null);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -60,8 +63,6 @@ export default function AddProduct() {
         token = await SecureStore.getItemAsync("access_token");
       }
       
-      console.log('Retrieved token:', token ? `Length: ${token.length}` : 'No token');
-      
       if (!token) {
         // Try to get from user_data as fallback
         let userData;
@@ -74,7 +75,6 @@ export default function AddProduct() {
         if (userData) {
           const parsed = JSON.parse(userData);
           token = parsed.accessToken;
-          console.log('Fallback token from user_data:', token ? `Length: ${token.length}` : 'No token');
         }
       }
       
@@ -84,6 +84,84 @@ export default function AddProduct() {
       return null;
     }
   };
+
+  // Fetch product data
+// Fetch product data
+    const fetchProduct = async () => {
+    try {
+        setFetching(true);
+        const token = await getTokenFromStorage();
+        
+        if (!token) {
+        Alert.alert('Authentication Required', 'Please login to edit products.');
+        router.back();
+        return;
+        }
+
+        console.log('Fetching product with ID:', id);
+
+        const response = await fetch(`https://ready9ja-api.onrender.com/api/v1/products/${id}`, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+        },
+        });
+
+        if (!response.ok) {
+        throw new Error(`Failed to fetch product: ${response.status}`);
+        }
+
+        const responseData = await response.json();
+        console.log('Fetched product data:', responseData);
+
+        // Extract product data from the nested structure
+        const productData = responseData.product || responseData;
+
+        // Transform API response to form state
+        const transformedForm = {
+        name: productData.name || "",
+        description: productData.description || "",
+        price: productData.price?.toString() || "",
+        stock: productData.stock?.toString() || "0",
+        status: productData.status !== false, // Default to true if not specified
+        // Handle tags - if it's a string, split into array; if array, use as is
+        tags: productData.tags ? 
+            (Array.isArray(productData.tags) ? 
+            productData.tags : 
+            productData.tags.split(',').map(tag => tag.trim()).filter(tag => tag)) 
+            : [],
+        // Handle categories - if it's a string, split into array; if array, use as is
+        categories: productData.categories ? 
+            (Array.isArray(productData.categories) ? 
+            productData.categories.map(cat => typeof cat === 'string' ? cat : cat.name || cat) :
+            productData.categories.split(',').map(cat => cat.trim()).filter(cat => cat))
+            : [],
+        sku: productData.sku || "",
+        slug: productData.slug || "",
+        discount: productData.discount?.toString() || "0",
+        images: productData.images || []
+        };
+
+        console.log('Transformed form data:', transformedForm);
+
+        setForm(transformedForm);
+        setOriginalForm(transformedForm);
+
+    } catch (error) {
+        console.error('Error fetching product:', error);
+        Alert.alert('Error', `Failed to load product data: ${error.message}`);
+        router.back();
+    } finally {
+        setFetching(false);
+    }
+    };
+
+  useEffect(() => {
+    if (id) {
+      fetchProduct();
+    }
+  }, [id]);
 
   // Handle form input changes
   const handleInputChange = (field, value) => {
@@ -200,223 +278,87 @@ export default function AddProduct() {
     return true;
   };
 
-  // Get file name from URI
-  const getFileNameFromUri = (uri) => {
-    return uri.split('/').pop();
+  // Check if form has changes
+  const hasChanges = () => {
+    if (!originalForm) return false;
+    
+    return JSON.stringify(form) !== JSON.stringify(originalForm);
   };
 
-  // Get MIME type from URI
-  const getMimeTypeFromUri = (uri) => {
-    const extension = uri.split('.').pop().toLowerCase();
-    const mimeTypes = {
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'webp': 'image/webp',
-    };
-    return mimeTypes[extension] || 'image/jpeg';
-  };
+  // Update product using PATCH
 
-  // Main product submission using XMLHttpRequest (better for file uploads)
-  const handleSubmit = async () => {
+    const handleUpdate = async () => {
     if (!validateForm()) return;
+
+    if (!hasChanges()) {
+        Alert.alert('No Changes', 'No changes were made to the product.');
+        return;
+    }
 
     setLoading(true);
     
     try {
-      const token = await getTokenFromStorage();
-      
-      if (!token) {
-        Alert.alert('Authentication Required', 'Please login to create products.');
-        setLoading(false);
+        const token = await getTokenFromStorage();
+        
+        if (!token) {
+        Alert.alert('Authentication Required', 'Please login to update products.');
         return;
-      }
+        }
 
-      console.log('Creating FormData with token:', token.substring(0, 20) + '...');
-
-      // Create FormData object
-      const formData = new FormData();
-
-      // Append all fields as form data
-      formData.append('name', form.name.trim());
-      formData.append('description', form.description.trim());
-      formData.append('price', parseFloat(form.price).toString());
-      formData.append('stock', parseInt(form.stock).toString());
-      formData.append('status', form.status.toString());
-      formData.append('tags', form.tags.join(','));
-      formData.append('categories', form.categories.join(','));
-      formData.append('sku', form.sku.trim());
-      formData.append('slug', form.slug.trim());
-      formData.append('discount', (parseFloat(form.discount) || 0).toString());
-
-      // Append images as files
-      form.images.forEach((imageUri, index) => {
-        const fileName = getFileNameFromUri(imageUri);
-        const mimeType = getMimeTypeFromUri(imageUri);
-        
-        formData.append('images', {
-          uri: imageUri,
-          type: mimeType,
-          name: fileName || `product-image-${index}.jpg`
-        });
-      });
-
-      console.log('FormData created, submitting to API via XHR...');
-
-      // Use XMLHttpRequest for better FormData support
-      const xhr = new XMLHttpRequest();
-      
-      return new Promise((resolve, reject) => {
-        xhr.open('POST', 'https://ready9ja-api.onrender.com/api/v1/products');
-        xhr.setRequestHeader('Accept', '*/*');
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-        
-        xhr.onload = function() {
-          console.log('XHR Response status:', xhr.status);
-          
-          try {
-            const result = JSON.parse(xhr.responseText);
-            console.log('XHR Response:', result);
-
-            if (xhr.status >= 200 && xhr.status < 300) {
-              console.log('Product created successfully:', result);
-              setShowSuccessModal(true);
-              resolve(result);
-            } else {
-              console.error('XHR API Error response:', result);
-              
-              // If XHR fails, try alternative method
-              if (xhr.status === 401 || xhr.status === 500) {
-                Alert.alert(
-                  'Upload Failed', 
-                  'Trying alternative upload method...',
-                  [
-                    {
-                      text: 'OK',
-                      onPress: () => tryAlternativeUploadMethod()
-                    }
-                  ]
-                );
-              } else {
-                reject(new Error(result.message || `Failed to create product: ${xhr.status}`));
-              }
-            }
-          } catch (parseError) {
-            console.error('XHR Parse error:', parseError);
-            reject(new Error('Failed to parse response'));
-          }
+        // Prepare update data according to API schema
+        // The API expects tags and categories as comma-separated strings, not arrays
+        const updateData = {
+        name: form.name.trim(),
+        description: form.description.trim(),
+        price: parseFloat(form.price),
+        stock: parseInt(form.stock),
+        status: form.status,
+        tags: Array.isArray(form.tags) ? form.tags.join(',') : form.tags, // Convert array to string
+        categories: Array.isArray(form.categories) ? form.categories.join(',') : form.categories, // Convert array to string
+        sku: form.sku.trim(),
+        slug: form.slug.trim(),
+        discount: parseFloat(form.discount) || 0,
+        images: form.images
         };
-        
-        xhr.onerror = function() {
-          console.error('XHR Network error');
-          Alert.alert(
-            'Network Error', 
-            'Trying alternative upload method...',
-            [
-              {
-                text: 'OK',
-                onPress: () => tryAlternativeUploadMethod()
-              }
-            ]
-          );
-        };
-        
-        xhr.ontimeout = function() {
-          console.error('XHR Timeout');
-          reject(new Error('Request timeout'));
-        };
-        
-        console.log('Sending XHR request with FormData...');
-        xhr.send(formData);
-      });
-      
-    } catch (error) {
-      console.error('Product creation error:', error);
-      Alert.alert('Error', error.message || 'Failed to create product. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  // Alternative upload method using fetch
-  const tryAlternativeUploadMethod = async () => {
-    try {
-      setLoading(true);
-      const token = await getTokenFromStorage();
-      
-      console.log('Trying alternative upload method with fetch...');
-      
-      const formData = new FormData();
-      
-      // Append all fields
-      formData.append('name', form.name.trim());
-      formData.append('description', form.description.trim());
-      formData.append('price', parseFloat(form.price).toString());
-      formData.append('stock', parseInt(form.stock).toString());
-      formData.append('status', form.status.toString());
-      formData.append('tags', form.tags.join(','));
-      formData.append('categories', form.categories.join(','));
-      formData.append('sku', form.sku.trim());
-      formData.append('slug', form.slug.trim());
-      formData.append('discount', (parseFloat(form.discount) || 0).toString());
+        console.log('Updating product with data:', updateData);
 
-      // Append images
-      form.images.forEach((imageUri, index) => {
-        const fileName = getFileNameFromUri(imageUri);
-        const mimeType = getMimeTypeFromUri(imageUri);
-        
-        formData.append('images', {
-          uri: imageUri,
-          type: mimeType,
-          name: fileName || `product-image-${index}.jpg`
-        });
-      });
-
-      // Don't set Content-Type header - let React Native set it with boundary
-      const response = await fetch('https://ready9ja-api.onrender.com/api/v1/products', {
-        method: 'POST',
+        const response = await fetch(`https://ready9ja-api.onrender.com/api/v1/products/${id}`, {
+        method: 'PATCH',
         headers: {
-          'Accept': '*/*',
-          'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
         },
-        body: formData,
-      });
+        body: JSON.stringify(updateData),
+        });
 
-      const result = await response.json();
-      console.log('Alternative method response:', response.status, result);
+        const result = await response.json();
+        console.log('Update response status:', response.status);
+        console.log('Update response data:', result);
 
-      if (response.ok) {
-        console.log('Product created successfully via alternative method:', result);
+        if (response.ok) {
+        console.log('Product updated successfully');
         setShowSuccessModal(true);
-      } else {
-        throw new Error(result.message || `Failed to create product: ${response.status}`);
-      }
-      
+        setOriginalForm(form); // Update original form to current state
+        } else {
+        throw new Error(result.message || `Failed to update product: ${response.status}`);
+        }
+        
     } catch (error) {
-      console.error('Alternative method error:', error);
-      Alert.alert('Upload Failed', error.message || 'Please try again with smaller images or check your connection.');
+        console.error('Product update error:', error);
+        Alert.alert('Error', error.message || 'Failed to update product. Please try again.');
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
-  };
+    };
 
-  // Reset form
+  // Reset form to original values
   const resetForm = () => {
-    setForm({
-      name: "",
-      description: "",
-      price: "",
-      stock: "",
-      status: true,
-      tags: [],
-      categories: [],
-      sku: "",
-      slug: "",
-      discount: "0",
-      images: []
-    });
-    setShowSuccessModal(false);
+    if (originalForm) {
+      setForm(originalForm);
+      Alert.alert('Form Reset', 'All changes have been discarded.');
+    }
   };
 
   // Format price
@@ -448,6 +390,60 @@ export default function AddProduct() {
     }));
   };
 
+  // Delete product
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Product',
+      'Are you sure you want to delete this product? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: deleteProduct
+        }
+      ]
+    );
+  };
+
+  const deleteProduct = async () => {
+    try {
+      setLoading(true);
+      const token = await getTokenFromStorage();
+      
+      const response = await fetch(`https://ready9ja-api.onrender.com/api/v1/products/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        Alert.alert('Success', 'Product deleted successfully', [
+          { text: 'OK', onPress: () => router.replace('/seller/(tabs)/products') }
+        ]);
+      } else {
+        const result = await response.json();
+        throw new Error(result.message || `Failed to delete product: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Delete product error:', error);
+      Alert.alert('Error', error.message || 'Failed to delete product. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (fetching) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#7C3AED" />
+        <Text style={styles.loadingText}>Loading product data...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -460,12 +456,18 @@ export default function AddProduct() {
           >
             <Ionicons name="arrow-back" size={24} color="#7C3AED" />
           </TouchableOpacity>
-          <Text style={styles.title}>Add New Product</Text>
-          <View style={styles.headerRight} />
+          <Text style={styles.title}>Edit Product</Text>
+          <TouchableOpacity 
+            style={styles.deleteButton}
+            onPress={handleDelete}
+            disabled={loading}
+          >
+            <Ionicons name="trash-outline" size={20} color="#EF4444" />
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.subtitle}>
-          Fill in the details below to list your product on Ready9ja
+          Update your product information below
         </Text>
 
         {/* Product Images */}
@@ -474,7 +476,7 @@ export default function AddProduct() {
             Product Images {form.images.length > 0 && `(${form.images.length})`}
           </Text>
           <Text style={styles.sectionSubtitle}>
-            Upload product images from your device (Max 10 images)
+            Update product images (Max 10 images)
           </Text>
 
           <ScrollView 
@@ -745,34 +747,42 @@ export default function AddProduct() {
         <View style={styles.actionsContainer}>
           <TouchableOpacity 
             style={[styles.button, styles.cancelButton, loading && styles.disabledButton]}
-            onPress={() => router.back()}
-            disabled={loading}
+            onPress={resetForm}
+            disabled={!hasChanges() || loading}
           >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
+            <Text style={styles.cancelButtonText}>Reset</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={[
               styles.button, 
               styles.submitButton, 
-              loading && styles.submitButtonDisabled
+              (!hasChanges() || loading) && styles.submitButtonDisabled
             ]}
-            onPress={handleSubmit}
-            disabled={loading}
+            onPress={handleUpdate}
+            disabled={!hasChanges() || loading}
           >
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text style={styles.submitButtonText}>Publishing...</Text>
+                <Text style={styles.submitButtonText}>Updating...</Text>
               </View>
             ) : (
               <>
-                <Ionicons name="cloud-upload-outline" size={20} color="#FFFFFF" />
-                <Text style={styles.submitButtonText}>Publish Product</Text>
+                <Ionicons name="save-outline" size={20} color="#FFFFFF" />
+                <Text style={styles.submitButtonText}>Update Product</Text>
               </>
             )}
           </TouchableOpacity>
         </View>
+
+        {/* Change Indicator */}
+        {hasChanges() && (
+          <View style={styles.changesIndicator}>
+            <Ionicons name="information-circle" size={16} color="#7C3AED" />
+            <Text style={styles.changesText}>You have unsaved changes</Text>
+          </View>
+        )}
       </ScrollView>
 
       {/* Success Modal */}
@@ -787,18 +797,18 @@ export default function AddProduct() {
               <Ionicons name="checkmark-circle" size={80} color="#10B981" />
             </View>
             
-            <Text style={styles.successTitle}>Product Published! 🎉</Text>
+            <Text style={styles.successTitle}>Product Updated! ✅</Text>
             
             <Text style={styles.successMessage}>
-              Your product has been successfully listed on Ready9ja marketplace.
+              Your product has been successfully updated on Ready9ja marketplace.
             </Text>
 
             <View style={styles.successActions}>
               <TouchableOpacity 
                 style={[styles.button, styles.secondaryButton]}
-                onPress={resetForm}
+                onPress={() => setShowSuccessModal(false)}
               >
-                <Text style={styles.secondaryButtonText}>Add Another Product</Text>
+                <Text style={styles.secondaryButtonText}>Continue Editing</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
@@ -815,6 +825,7 @@ export default function AddProduct() {
   );
 }
 
+// ... (styles remain the same as in the previous edit product code)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -823,6 +834,17 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
     padding: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 50,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
   },
   header: {
     flexDirection: 'row',
@@ -840,8 +862,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     flex: 1,
   },
-  headerRight: {
-    width: 40,
+  deleteButton: {
+    padding: 8,
   },
   subtitle: {
     fontSize: 16,
@@ -1027,7 +1049,7 @@ const styles = StyleSheet.create({
   actionsContainer: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 32,
+    marginBottom: 12,
     paddingHorizontal: 4,
   },
   button: {
@@ -1074,7 +1096,23 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.6,
   },
-  // Success Modal
+  // Changes Indicator
+  changesIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5F3FF',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 32,
+    gap: 8,
+  },
+  changesText: {
+    fontSize: 14,
+    color: '#7C3AED',
+    fontWeight: '500',
+  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

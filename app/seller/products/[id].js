@@ -1,110 +1,160 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from 'react';
-import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
-} from 'react-native';
-import api from '../../../constants/api'; // Fixed import path
-import { useAuth } from '../../../hooks/useAuth'; // Fixed import path
+import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useAuth } from '../../../hooks/useAuth';
 
 export default function ProductDetails() {
-  const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { id } = useLocalSearchParams();
   const { getUser } = useAuth();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [imageIndex, setImageIndex] = useState(0);
 
-  useEffect(() => {
-    loadProduct();
-  }, [id]);
-
-  const getAuthToken = async () => {
+  // Get token from storage
+  const getTokenFromStorage = async () => {
     try {
-      const userData = await getUser();
-      return userData?.accessToken;
+      let token;
+      if (Platform.OS === "web") {
+        token = await AsyncStorage.getItem("access_token");
+      } else {
+        token = await SecureStore.getItemAsync("access_token");
+      }
+      
+      if (!token) {
+        // Try to get from user_data as fallback
+        let userData;
+        if (Platform.OS === "web") {
+          userData = await AsyncStorage.getItem("user_data");
+        } else {
+          userData = await SecureStore.getItemAsync("user_data");
+        }
+        
+        if (userData) {
+          const parsed = JSON.parse(userData);
+          token = parsed.accessToken;
+        }
+      }
+      
+      return token;
     } catch (error) {
-      console.error('Error getting auth token:', error);
+      console.error("Error getting token from storage:", error);
       return null;
     }
   };
 
-  const loadProduct = async () => {
-    setLoading(true);
+  useEffect(() => {
+    fetchProduct();
+  }, [id]);
+
+  const fetchProduct = async () => {
     try {
-      const token = await getAuthToken();
+      setLoading(true);
+      const token = await getTokenFromStorage();
+      
       if (!token) {
-        Alert.alert('Authentication Required', 'Please log in to view product details.');
+        Alert.alert('Authentication Required', 'Please login to view product details.');
+        router.back();
         return;
       }
 
-      const response = await api.get(`/products/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      console.log('Fetching product details with ID:', id);
+
+      const response = await fetch(`https://ready9ja-api.onrender.com/api/v1/products/${id}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
       });
 
-      setProduct(response.data);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch product: ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      console.log('Fetched product details:', responseData);
+
+      // Extract product data from the nested structure
+      const productData = responseData.product || responseData;
+      setProduct(productData);
+      
     } catch (error) {
-      console.error('Error loading product:', error);
-      Alert.alert('Error', 'Failed to load product details.');
+      console.error('Error fetching product details:', error);
+      Alert.alert('Error', `Failed to load product details: ${error.message}`);
+      router.back();
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpdate = async () => {
-    setSaving(true);
+  const handleEdit = () => {
+    router.push(`/seller/products/edit/${id}`);
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Product',
+      'Are you sure you want to delete this product? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: deleteProduct
+        }
+      ]
+    );
+  };
+
+  const deleteProduct = async () => {
     try {
-      const token = await getAuthToken();
-      await api.patch(`/products/${id}`, product, {
-        headers: { Authorization: `Bearer ${token}` }
+      const token = await getTokenFromStorage();
+      
+      const response = await fetch(`https://ready9ja-api.onrender.com/api/v1/products/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
       });
 
-      Alert.alert('Success', 'Product updated successfully');
-      setEditing(false);
+      if (response.ok) {
+        Alert.alert('Success', 'Product deleted successfully', [
+          { text: 'OK', onPress: () => router.replace('/seller/(tabs)/products') }
+        ]);
+      } else {
+        const result = await response.json();
+        throw new Error(result.message || `Failed to delete product: ${response.status}`);
+      }
     } catch (error) {
-      console.error('Error updating product:', error);
-      Alert.alert('Error', 'Failed to update product.');
-    } finally {
-      setSaving(false);
+      console.error('Delete product error:', error);
+      Alert.alert('Error', error.message || 'Failed to delete product. Please try again.');
     }
   };
 
-  const handleDelete = async () => {
-    try {
-      const token = await getAuthToken();
-      await api.delete(`/products/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      Alert.alert('Success', 'Product deleted successfully');
-      router.push('/seller/(tabs)/products');
-    } catch (error) {
-      console.error('Error deleting product:', error);
-      Alert.alert('Error', 'Failed to delete product.');
-    }
+  const getStatusColor = () => {
+    if (!product) return '#6B7280';
+    if (product.stock === 0) return '#EF4444';
+    if (product.status === false) return '#6B7280';
+    return '#10B981';
   };
 
-  const updateField = (field, value) => {
-    setProduct(prev => ({ ...prev, [field]: value }));
+  const getStatusText = () => {
+    if (!product) return 'Loading...';
+    if (product.stock === 0) return 'Out of Stock';
+    if (product.status === false) return 'Inactive';
+    return 'Active';
   };
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={styles.loadingText}>Loading product...</Text>
+        <Text style={styles.loadingText}>Loading product details...</Text>
       </View>
     );
   }
@@ -112,12 +162,13 @@ export default function ProductDetails() {
   if (!product) {
     return (
       <View style={styles.errorContainer}>
+        <Ionicons name="alert-circle-outline" size={64} color="#6B7280" />
         <Text style={styles.errorText}>Product not found</Text>
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={() => router.push('/seller/(tabs)/products')}
+          onPress={() => router.back()}
         >
-          <Text style={styles.backButtonText}>Back to Products</Text>
+          <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -125,180 +176,131 @@ export default function ProductDetails() {
 
   return (
     <View style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#7C3AED" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Product Details</Text>
+        <View style={styles.headerActions}>
           <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => router.back()}
+            style={styles.editButton}
+            onPress={handleEdit}
           >
-            <Ionicons name="arrow-back" size={24} color="#7C3AED" />
+            <Ionicons name="create-outline" size={20} color="#7C3AED" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Product Details</Text>
-          <View style={styles.headerActions}>
-            {!editing ? (
-              <>
-                <TouchableOpacity 
-                  style={styles.editButton}
-                  onPress={() => setEditing(true)}
-                >
-                  <Ionicons name="create-outline" size={20} color="#7C3AED" />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.deleteButton}
-                  onPress={() => setShowDeleteModal(true)}
-                >
-                  <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <TouchableOpacity 
-                  style={styles.cancelButton}
-                  onPress={() => {
-                    setEditing(false);
-                    loadProduct();
-                  }}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-                  onPress={handleUpdate}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.saveButtonText}>Save</Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
+          <TouchableOpacity 
+            style={styles.deleteButton}
+            onPress={handleDelete}
+          >
+            <Ionicons name="trash-outline" size={20} color="#EF4444" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Debug Info */}
+        <View style={styles.debugSection}>
+          <Text style={styles.debugText}>Product ID: {id}</Text>
+          <Text style={styles.debugText}>Images: {product.images?.length || 0}</Text>
+          <Text style={styles.debugText}>Categories: {product.categories?.length || 0}</Text>
         </View>
 
         {/* Product Images */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Product Images</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {product.images?.map((image, index) => (
+        <View style={styles.imagesSection}>
+          {product.images && product.images.length > 0 ? (
+            <>
               <Image
-                key={index}
-                source={{ uri: image }}
-                style={styles.productImage}
+                source={{ uri: product.images[imageIndex] }}
+                style={styles.mainImage}
+                resizeMode="cover"
               />
-            ))}
-          </ScrollView>
+              {product.images.length > 1 && (
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.thumbnailsContainer}
+                >
+                  {product.images.map((image, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => setImageIndex(index)}
+                    >
+                      <Image
+                        source={{ uri: image }}
+                        style={[
+                          styles.thumbnail,
+                          index === imageIndex && styles.thumbnailActive
+                        ]}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </>
+          ) : (
+            <View style={styles.noImageContainer}>
+              <Ionicons name="image-outline" size={64} color="#D1D5DB" />
+              <Text style={styles.noImageText}>No images available</Text>
+            </View>
+          )}
         </View>
 
-        {/* Basic Information */}
+        {/* Product Info */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Basic Information</Text>
+          <View style={styles.productHeader}>
+            <Text style={styles.productName}>{product.name}</Text>
+            <View style={[
+              styles.statusBadge,
+              { backgroundColor: getStatusColor() + '20' }
+            ]}>
+              <Text style={[styles.statusText, { color: getStatusColor() }]}>
+                {getStatusText()}
+              </Text>
+            </View>
+          </View>
           
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Product Name</Text>
-            {editing ? (
-              <TextInput
-                style={styles.input}
-                value={product.name}
-                onChangeText={(value) => updateField('name', value)}
-              />
-            ) : (
-              <Text style={styles.value}>{product.name}</Text>
-            )}
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Description</Text>
-            {editing ? (
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={product.description}
-                onChangeText={(value) => updateField('description', value)}
-                multiline
-                numberOfLines={4}
-              />
-            ) : (
-              <Text style={styles.value}>{product.description}</Text>
-            )}
-          </View>
-
-          <View style={styles.row}>
-            <View style={styles.halfInput}>
-              <Text style={styles.label}>Price (₦)</Text>
-              {editing ? (
-                <TextInput
-                  style={styles.input}
-                  value={product.price?.toString()}
-                  onChangeText={(value) => updateField('price', parseFloat(value) || 0)}
-                  keyboardType="decimal-pad"
-                />
-              ) : (
-                <Text style={styles.value}>₦{product.price?.toLocaleString()}</Text>
-              )}
+          <Text style={styles.productPrice}>₦{product.price?.toLocaleString()}</Text>
+          
+          {product.discount > 0 && (
+            <View style={styles.discountContainer}>
+              <Text style={styles.originalPrice}>
+                ₦{(product.price / (1 - product.discount / 100)).toLocaleString()}
+              </Text>
+              <Text style={styles.discountText}>{product.discount}% OFF</Text>
             </View>
-            <View style={styles.halfInput}>
-              <Text style={styles.label}>Stock</Text>
-              {editing ? (
-                <TextInput
-                  style={styles.input}
-                  value={product.stock?.toString()}
-                  onChangeText={(value) => updateField('stock', parseInt(value) || 0)}
-                  keyboardType="number-pad"
-                />
-              ) : (
-                <Text style={styles.value}>{product.stock}</Text>
-              )}
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Status</Text>
-            {editing ? (
-              <View style={styles.switchContainer}>
-                <Text style={styles.switchLabel}>
-                  {product.status ? 'Active' : 'Inactive'}
-                </Text>
-                <Switch
-                  value={product.status}
-                  onValueChange={(value) => updateField('status', value)}
-                  trackColor={{ false: '#D1D5DB', true: '#7C3AED' }}
-                />
-              </View>
-            ) : (
-              <View style={[
-                styles.statusBadge,
-                { backgroundColor: product.status ? '#10B98120' : '#6B728020' }
-              ]}>
-                <Text style={[
-                  styles.statusText,
-                  { color: product.status ? '#10B981' : '#6B7280' }
-                ]}>
-                  {product.status ? 'Active' : 'Inactive'}
-                </Text>
-              </View>
-            )}
-          </View>
+          )}
         </View>
 
-        {/* Product Identifiers */}
+        {/* Description */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Product Identifiers</Text>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>SKU</Text>
-            <Text style={styles.value}>{product.sku || 'Not set'}</Text>
-          </View>
+          <Text style={styles.sectionTitle}>Description</Text>
+          <Text style={styles.description}>{product.description}</Text>
+        </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Slug</Text>
-            <Text style={styles.value}>{product.slug || 'Not set'}</Text>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Discount</Text>
-            <Text style={styles.value}>{product.discount || 0}%</Text>
+        {/* Product Details */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Product Details</Text>
+          <View style={styles.detailsGrid}>
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>SKU</Text>
+              <Text style={styles.detailValue}>{product.sku || 'N/A'}</Text>
+            </View>
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Slug</Text>
+              <Text style={styles.detailValue}>{product.slug || 'N/A'}</Text>
+            </View>
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Stock</Text>
+              <Text style={styles.detailValue}>{product.stock || 0}</Text>
+            </View>
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Discount</Text>
+              <Text style={styles.detailValue}>{product.discount || 0}%</Text>
+            </View>
           </View>
         </View>
 
@@ -306,62 +308,64 @@ export default function ProductDetails() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Categories & Tags</Text>
           
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Categories</Text>
-            <View style={styles.tagsContainer}>
-              {product.categories?.map((category, index) => (
-                <View key={index} style={styles.tag}>
-                  <Text style={styles.tagText}>{category}</Text>
-                </View>
-              ))}
+          {product.categories && product.categories.length > 0 && (
+            <View style={styles.tagsSection}>
+              <Text style={styles.tagsLabel}>Categories:</Text>
+              <View style={styles.tagsContainer}>
+                {product.categories.map((category, index) => (
+                  <View key={index} style={styles.tag}>
+                    <Text style={styles.tagText}>
+                      {typeof category === 'string' ? category : category.name}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             </View>
-          </View>
+          )}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Tags</Text>
-            <View style={styles.tagsContainer}>
-              {product.tags?.map((tag, index) => (
-                <View key={index} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
-                </View>
-              ))}
+          {product.tags && (
+            <View style={styles.tagsSection}>
+              <Text style={styles.tagsLabel}>Tags:</Text>
+              <View style={styles.tagsContainer}>
+                {product.tags.split(',').map((tag, index) => (
+                  <View key={index} style={styles.tag}>
+                    <Text style={styles.tagText}>{tag.trim()}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Business Info */}
+        {product.business && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Business Information</Text>
+            <View style={styles.businessInfo}>
+              <Text style={styles.businessName}>{product.business.name}</Text>
+              {product.business.location_address && (
+                <Text style={styles.businessAddress}>
+                  {product.business.location_address}, {product.business.location_city}
+                </Text>
+              )}
+              <Text style={styles.businessLocation}>
+                {product.business.location_state}, {product.business.location_country}
+              </Text>
             </View>
           </View>
+        )}
+
+        {/* Action Buttons */}
+        <View style={styles.actionsContainer}>
+          <TouchableOpacity 
+            style={[styles.button, styles.editFullButton]}
+            onPress={handleEdit}
+          >
+            <Ionicons name="create-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.editButtonText}>Edit Product</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
-
-      {/* Delete Confirmation Modal */}
-      <Modal
-        visible={showDeleteModal}
-        transparent={true}
-        animationType="fade"
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalIcon}>
-              <Ionicons name="warning" size={48} color="#EF4444" />
-            </View>
-            <Text style={styles.modalTitle}>Delete Product</Text>
-            <Text style={styles.modalMessage}>
-              Are you sure you want to delete "{product.name}"? This action cannot be undone.
-            </Text>
-            <View style={styles.modalActions}>
-              <TouchableOpacity 
-                style={styles.modalCancel}
-                onPress={() => setShowDeleteModal(false)}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.modalDelete}
-                onPress={handleDelete}
-              >
-                <Text style={styles.modalDeleteText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -390,10 +394,20 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 18,
     color: '#6B7280',
-    marginBottom: 16,
+    marginTop: 16,
+    marginBottom: 24,
   },
-  scrollView: {
-    flex: 1,
+  debugSection: {
+    backgroundColor: '#FEF3C7',
+    padding: 12,
+    borderRadius: 8,
+    margin: 16,
+    marginBottom: 0,
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#92400E',
+    marginBottom: 2,
   },
   header: {
     flexDirection: 'row',
@@ -404,6 +418,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
+  backButton: {
+    padding: 8,
+  },
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -411,7 +428,6 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
   },
   editButton: {
@@ -420,103 +436,131 @@ const styles = StyleSheet.create({
   deleteButton: {
     padding: 8,
   },
-  cancelButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#F3F4F6',
+  scrollView: {
+    flex: 1,
+  },
+  imagesSection: {
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+  },
+  mainImage: {
+    width: '100%',
+    height: 300,
+    borderRadius: 12,
+  },
+  thumbnailsContainer: {
+    marginTop: 12,
+  },
+  thumbnail: {
+    width: 60,
+    height: 60,
     borderRadius: 8,
+    marginRight: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
-  cancelButtonText: {
-    color: '#374151',
-    fontWeight: '600',
+  thumbnailActive: {
+    borderColor: '#7C3AED',
   },
-  saveButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#7C3AED',
-    borderRadius: 8,
+  noImageContainer: {
+    height: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
   },
-  saveButtonDisabled: {
-    backgroundColor: '#C4B5FD',
-  },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+  noImageText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#6B7280',
   },
   section: {
     backgroundColor: '#FFFFFF',
-    margin: 16,
-    padding: 16,
     borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    padding: 16,
+    margin: 16,
+    marginTop: 0,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 16,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  value: {
-    fontSize: 16,
-    color: '#6B7280',
-    paddingVertical: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: '#FFFFFF',
-  },
-  textArea: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  halfInput: {
-    flex: 1,
-  },
-  switchContainer: {
+  productHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    marginBottom: 8,
   },
-  switchLabel: {
-    fontSize: 16,
-    color: '#374151',
+  productName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    flex: 1,
+    marginRight: 12,
   },
   statusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 12,
   },
   statusText: {
     fontSize: 12,
     fontWeight: '600',
   },
-  productImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 8,
-    marginRight: 8,
+  productPrice: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#7C3AED',
+    marginBottom: 4,
+  },
+  discountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  originalPrice: {
+    fontSize: 16,
+    color: '#6B7280',
+    textDecorationLine: 'line-through',
+  },
+  discountText: {
+    fontSize: 14,
+    color: '#EF4444',
+    fontWeight: '600',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  description: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
+  detailsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  detailItem: {
+    width: '48%',
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  tagsSection: {
+    marginBottom: 12,
+  },
+  tagsLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
   },
   tagsContainer: {
     flexDirection: 'row',
@@ -534,62 +578,42 @@ const styles = StyleSheet.create({
     color: '#7C3AED',
     fontWeight: '500',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+  businessInfo: {
+    marginTop: 8,
   },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-    alignItems: 'center',
-  },
-  modalIcon: {
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
-  modalMessage: {
+  businessName: {
     fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  businessAddress: {
+    fontSize: 14,
     color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
+    marginBottom: 2,
   },
-  modalActions: {
+  businessLocation: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  actionsContainer: {
+    padding: 16,
+    paddingTop: 0,
+  },
+  button: {
     flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  modalCancel: {
-    flex: 1,
-    paddingVertical: 12,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 8,
   },
-  modalCancelText: {
-    color: '#374151',
+  editFullButton: {
+    backgroundColor: '#7C3AED',
+  },
+  editButtonText: {
+    fontSize: 16,
     fontWeight: '600',
-  },
-  modalDelete: {
-    flex: 1,
-    paddingVertical: 12,
-    backgroundColor: '#EF4444',
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  modalDeleteText: {
     color: '#FFFFFF',
-    fontWeight: '600',
   },
 });

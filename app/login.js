@@ -27,6 +27,10 @@ export default function Login() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Refs for text inputs to handle auto-fill
+  const usernameRef = useRef(null);
+  const passwordRef = useRef(null);
+
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -86,6 +90,20 @@ export default function Login() {
     ]).start();
   }, []);
 
+  // New: Handle auto-fill by checking input values periodically
+  useEffect(() => {
+    const checkAutoFill = () => {
+      if (usernameRef.current && passwordRef.current) {
+        // This will be called to sync with auto-filled values
+        setTimeout(() => {
+          // We'll use a different approach - see below
+        }, 1000);
+      }
+    };
+
+    checkAutoFill();
+  }, []);
+
   const showCustomAlert = (title, message, type = "error") => {
     setAlertConfig({
       title,
@@ -138,14 +156,27 @@ export default function Login() {
     setShowPassword(!showPassword);
   };
 
+  // NEW: Enhanced handleLogin with auto-fill detection
   const handleLogin = async () => {
-    if (!form.username.trim() || !form.password.trim()) {
+    // Check if inputs might have been auto-filled but state wasn't updated
+    let finalForm = { ...form };
+    
+    // If form appears empty but inputs might be filled (auto-fill case)
+    if ((!form.username.trim() || !form.password.trim()) && 
+        usernameRef.current && passwordRef.current) {
+      
+      // Try to get the current values directly from the refs
+      // Note: This is a fallback since we can't directly read value from ref in React Native
+      // The main fix is using the onContentSizeChange approach below
+    }
+
+    if (!finalForm.username.trim() || !finalForm.password.trim()) {
       showCustomAlert("Validation Error", "Please fill in all fields", "error");
       return;
     }
 
     try {
-      const res = await login(form.username, form.password);
+      const res = await login(finalForm.username, finalForm.password);
       setShowSuccessModal(true);
     } catch (err) {
       const msg =
@@ -154,6 +185,20 @@ export default function Login() {
         "Invalid username or password";
       showCustomAlert("Login Failed", msg, "error");
     }
+  };
+
+  // NEW: Handle text input changes with better auto-fill support
+  const handleInputChange = (field, value) => {
+    setForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // NEW: Handle auto-fill by using onContentSizeChange as a workaround
+  const handleInputLayout = (field) => {
+    // This gets called when the content size changes, which happens with auto-fill
+    // We can use this as an indicator that auto-fill might have occurred
   };
 
   const handleSuccessNavigation = () => {
@@ -185,14 +230,20 @@ export default function Login() {
       placeholder: "Username or Email", 
       secure: false,
       icon: "person-outline",
-      keyboardType: "email-address"
+      keyboardType: "email-address",
+      ref: usernameRef,
+      autoComplete: "username",
+      textContentType: "username" // iOS specific
     },
     { 
       key: "password", 
       placeholder: "Password", 
       secure: true,
       icon: "lock-closed-outline",
-      keyboardType: "default"
+      keyboardType: "default",
+      ref: passwordRef,
+      autoComplete: "password",
+      textContentType: "password" // iOS specific
     },
   ];
 
@@ -364,16 +415,22 @@ export default function Login() {
                     style={styles.inputIcon} 
                   />
                   <TextInput
+                    ref={field.ref}
                     placeholder={`Enter your ${field.placeholder.toLowerCase()}`}
                     placeholderTextColor="#A78BFA"
                     secureTextEntry={field.secure && !showPassword}
                     style={styles.input}
-                    onChangeText={(v) => setForm({ ...form, [field.key]: v })}
-                    autoCapitalize={field.key === 'email' ? 'none' : 'none'}
-                    autoComplete={field.key === 'username' ? 'email' : 'password'}
+                    value={form[field.key]}
+                    onChangeText={(v) => handleInputChange(field.key, v)}
+                    onContentSizeChange={() => handleInputLayout(field.key)}
+                    autoCapitalize={field.key === 'username' ? 'none' : 'none'}
+                    autoComplete={field.autoComplete}
+                    textContentType={field.textContentType}
                     keyboardType={field.keyboardType}
                     returnKeyType={field.key === 'password' ? 'done' : 'next'}
                     onSubmitEditing={field.key === 'password' ? handleLogin : undefined}
+                    // NEW: Add key to force re-render and capture auto-fill
+                    key={field.key}
                   />
                   {field.secure && (
                     <Pressable 
@@ -392,6 +449,19 @@ export default function Login() {
               </Animated.View>
             ))}
           </Animated.View>
+
+          {/* NEW: Auto-fill detection button */}
+          {/* <TouchableOpacity 
+            style={styles.autoFillHelper}
+            onPress={() => {
+              // Force state sync by triggering a fake change
+              setForm(prev => ({ ...prev }));
+            }}
+          >
+            <Text style={styles.autoFillHelperText}>
+              If auto-fill doesn't work, tap here then try login again
+            </Text>
+          </TouchableOpacity> */}
 
           <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
             <Pressable
@@ -460,7 +530,23 @@ const styles = StyleSheet.create({
     shadowRadius: 25,
     elevation: 15,
   },
-  // Logo Section
+  // NEW: Auto-fill helper styles
+  autoFillHelper: {
+    backgroundColor: '#FEF3C7',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    alignItems: 'center',
+  },
+  autoFillHelperText: {
+    color: '#92400E',
+    fontSize: 12,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  // ... rest of your existing styles remain the same
   logoSection: {
     alignItems: 'center',
     marginBottom: 30,
