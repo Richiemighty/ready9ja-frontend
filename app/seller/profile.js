@@ -1,39 +1,40 @@
 // seller/profile.js
 import {
-    Feather,
-    FontAwesome,
-    Ionicons,
-    MaterialCommunityIcons,
-    MaterialIcons
+  Feather,
+  FontAwesome,
+  Ionicons,
+  MaterialCommunityIcons,
+  MaterialIcons
 } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Image,
-    Keyboard,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from "react-native";
 import { useAuth } from "../../hooks/useAuth";
 
 export default function SellerProfile() {
   const router = useRouter();
-  const { logout, updateUserProfile, switchRole, getActiveRole, user } = useAuth();
+  const { logout, updateUserProfile, switchRole, getActiveRole, user, getUser } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [businessLoading, setBusinessLoading] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [promotionalEmails, setPromotionalEmails] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -53,16 +54,28 @@ export default function SellerProfile() {
 
   // Business-specific state
   const [businessInfo, setBusinessInfo] = useState({
-    businessName: "",
-    businessEmail: "",
-    businessPhone: "",
-    businessAddress: "",
-    businessCity: "",
-    businessState: "",
-    businessCountry: "Nigeria",
-    businessDescription: "",
+    id: "",
+    name: "",
+    yearFounded: "",
+    ownedBy: "",
+    category: "",
+    location_address: "",
+    location_city: "",
+    location_state: "",
+    location_country: "Nigeria",
+    nin: "",
+    cacImage: "",
     businessImage: "",
-    bannerImages: []
+    bannerImages: [],
+    isApproved: false,
+    createdAt: "",
+    updatedAt: ""
+  });
+
+  const [businessStats, setBusinessStats] = useState({
+    products: 0,
+    orders: 0,
+    rating: 0
   });
 
   const getItem = async (key) => {
@@ -75,48 +88,47 @@ export default function SellerProfile() {
     return SecureStore.setItemAsync(key, value);
   };
 
+  // Get token from storage
+  const getTokenFromStorage = async () => {
+    try {
+      let token;
+      if (Platform.OS === "web") {
+        token = await AsyncStorage.getItem("access_token");
+      } else {
+        token = await SecureStore.getItemAsync("access_token");
+      }
+      
+      if (!token) {
+        // Try to get from user_data as fallback
+        let userData;
+        if (Platform.OS === "web") {
+          userData = await AsyncStorage.getItem("user_data");
+        } else {
+          userData = await SecureStore.getItemAsync("user_data");
+        }
+        
+        if (userData) {
+          const parsed = JSON.parse(userData);
+          token = parsed.accessToken;
+        }
+      }
+      
+      return token;
+    } catch (error) {
+      console.error("Error getting token from storage:", error);
+      return null;
+    }
+  };
+
   useEffect(() => {
     loadUserData();
     loadBusinessData();
+    loadBusinessStats();
   }, []);
 
-  const loadUserData = async () => {
-    try {
-      const data = await getItem("user_data");
-      if (data) {
-        const parsed = JSON.parse(data);
-        setTempUser(parsed.user);
-      }
-    } catch (err) {
-      console.warn("Error loading profile:", err);
-      showCustomAlert("Error", "Failed to load profile data", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadBusinessData = async () => {
-    try {
-      // Simulate loading business data - replace with your API call
-      const mockBusinessData = {
-        businessName: "Precious's Mart",
-        businessEmail: "business@preciousmart.com",
-        businessPhone: "+2348012345678",
-        businessAddress: "23 Broad Street",
-        businessCity: "Lekki",
-        businessState: "Lagos",
-        businessCountry: "Nigeria",
-        businessDescription: "Your one-stop shop for quality products",
-        businessImage: "https://res.cloudinary.com/djock9yc0/image/upload/v1761629904/READY9JA/uvw3y7zdicitwftwobtm.png",
-        bannerImages: []
-      };
-      setBusinessInfo(mockBusinessData);
-    } catch (error) {
-      console.error("Error loading business data:", error);
-    }
-  };
-
+  // ENHANCED: Alert System from Buyer's Profile
   const showCustomAlert = (title, message, type = "info", options = {}) => {
+    // On iOS, use native Alert for better compatibility
     if (Platform.OS === 'ios' && options.showActions) {
       Alert.alert(
         title,
@@ -132,11 +144,12 @@ export default function SellerProfile() {
             style: type === 'error' ? 'destructive' : 'default',
             onPress: options.onConfirm
           }
-        ].filter(Boolean)
+        ].filter(Boolean) // Remove null buttons
       );
       return;
     }
 
+    // For non-iOS or non-action alerts, use custom modal
     setAlertConfig({
       title,
       message,
@@ -157,6 +170,7 @@ export default function SellerProfile() {
       useNativeDriver: true,
     }).start();
 
+    // Auto hide for non-action alerts
     if (!options.showActions) {
       setTimeout(() => {
         hideAlert();
@@ -173,6 +187,112 @@ export default function SellerProfile() {
       setShowAlert(false);
       setAlertConfig({});
     });
+  };
+
+  const loadUserData = async () => {
+    try {
+      const data = await getItem("user_data");
+      if (data) {
+        const parsed = JSON.parse(data);
+        setTempUser(parsed.user);
+      }
+    } catch (err) {
+      console.warn("Error loading profile:", err);
+      showCustomAlert("Error", "Failed to load profile data", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch actual business data from API
+  const loadBusinessData = async () => {
+    try {
+      setBusinessLoading(true);
+      const token = await getTokenFromStorage();
+      
+      if (!token) {
+        console.warn("No token found for business data");
+        return;
+      }
+
+      console.log("Fetching business profile...");
+
+      const response = await fetch("https://ready9ja-api.onrender.com/api/v1/business/profile", {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch business profile: ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      console.log("Business profile response:", responseData);
+
+      if (responseData.businessProfile) {
+        const businessData = responseData.businessProfile;
+        setBusinessInfo({
+          id: businessData.id || "",
+          name: businessData.name || "",
+          yearFounded: businessData.yearFounded || "",
+          ownedBy: businessData.ownedBy || "",
+          category: businessData.category || "",
+          location_address: businessData.location_address || "",
+          location_city: businessData.location_city || "",
+          location_state: businessData.location_state || "",
+          location_country: businessData.location_country || "Nigeria",
+          nin: businessData.nin || "",
+          cacImage: businessData.cacImage || "",
+          businessImage: businessData.businessImage || "",
+          bannerImages: businessData.bannerImages || [],
+          isApproved: businessData.isApproved || false,
+          createdAt: businessData.createdAt || "",
+          updatedAt: businessData.updatedAt || ""
+        });
+        
+      } else {
+        throw new Error("No business profile found in response");
+      }
+
+    } catch (error) {
+      console.error("Error loading business data:", error);
+      showCustomAlert("Error", "Failed to load business data", "error");
+    } finally {
+      setBusinessLoading(false);
+    }
+  };
+
+  // Load business statistics (products, orders, etc.)
+  const loadBusinessStats = async () => {
+    try {
+      const token = await getTokenFromStorage();
+      if (!token) return;
+
+      // Fetch products count
+      const productsResponse = await fetch(`https://ready9ja-api.onrender.com/api/v1/products/business/${businessInfo.id}`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json",
+        },
+      });
+
+      if (productsResponse.ok) {
+        const productsData = await productsResponse.json();
+        const productsCount = productsData.products?.length || 0;
+        
+        setBusinessStats(prev => ({
+          ...prev,
+          products: productsCount
+        }));
+      }
+
+    } catch (error) {
+      console.error("Error loading business stats:", error);
+    }
   };
 
   const openEditModal = (field, value = "", isBusinessField = false) => {
@@ -222,10 +342,14 @@ export default function SellerProfile() {
     });
   };
 
+  // ENHANCED: Role switching with iOS-compatible alerts
   const handleRoleSwitch = async (newRole) => {
     try {
+      console.log("🔄 Starting role switch to:", newRole);
+      
       closeRoleSwitch();
       
+      // Use the enhanced alert system
       showCustomAlert(
         "🎭 Switch Dashboard?", 
         `Are you sure you want to switch to ${getRoleDisplayName(newRole)} dashboard?`,
@@ -235,6 +359,8 @@ export default function SellerProfile() {
           confirmText: "Continue",
           cancelText: "Cancel",
           onConfirm: async () => {
+            console.log("✅ User confirmed role switch to:", newRole);
+            
             try {
               await switchRole(newRole);
               setCurrentRole(newRole);
@@ -252,11 +378,17 @@ export default function SellerProfile() {
                   redirectPath = '/buyer/(tabs)/marketplace';
               }
               
+              console.log("🎯 Redirecting to:", redirectPath);
+              
+              // Show success message
               showCustomAlert(
                 "✅ Success!", 
                 `You are now viewing the ${getRoleDisplayName(newRole)} dashboard`,
                 "success",
-                { duration: 1500 }
+                {
+                  showActions: false,
+                  duration: 1500
+                }
               );
               
               setTimeout(() => {
@@ -265,8 +397,15 @@ export default function SellerProfile() {
               
             } catch (switchError) {
               console.error("❌ Error during role switch:", switchError);
-              showCustomAlert("Error", "Failed to switch role. Please try again.", "error");
+              showCustomAlert(
+                "Error", 
+                "Failed to switch role. Please try again.", 
+                "error"
+              );
             }
+          },
+          onCancel: () => {
+            console.log("❌ User cancelled role switch");
           }
         }
       );
@@ -286,13 +425,16 @@ export default function SellerProfile() {
     setIsSaving(true);
     try {
       if (editingField.isBusinessField) {
-        // Update business info
-        setBusinessInfo(prev => ({
-          ...prev,
-          [editingField.field]: editValue.trim()
-        }));
-        // Here you would make API call to update business info
-        showCustomAlert("Success", "Business information updated successfully!", "success");
+        // Update business info via API
+        const updateSuccess = await updateBusinessProfile(editingField.field, editValue.trim());
+        
+        if (updateSuccess) {
+          setBusinessInfo(prev => ({
+            ...prev,
+            [editingField.field]: editValue.trim()
+          }));
+          showCustomAlert("Success", "Business information updated successfully!", "success");
+        }
       } else {
         // Update user profile
         const updateSuccess = await updateProfileDirectly(editingField.field, editValue.trim());
@@ -320,6 +462,45 @@ export default function SellerProfile() {
     } finally {
       setIsSaving(false);
       closeEditModal();
+    }
+  };
+
+  // Update business profile via API
+  const updateBusinessProfile = async (field, value) => {
+    try {
+      const token = await getTokenFromStorage();
+      if (!token) {
+        console.warn("⚠️ No token found for business update");
+        return false;
+      }
+
+      const payload = { [field]: value };
+      console.log("Updating business profile with:", payload);
+
+      const response = await fetch(
+        "https://ready9ja-api.onrender.com/api/v1/business/profile",
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (response.ok) {
+        console.log("Business profile updated successfully");
+        return true;
+      } else {
+        const errorText = await response.text();
+        console.error("Business update failed:", response.status, errorText);
+        showCustomAlert("Update Failed", "Failed to update business profile. Please try again.", "error");
+        return false;
+      }
+    } catch (error) {
+      console.error("❌ Business update error:", error);
+      return false;
     }
   };
 
@@ -358,6 +539,7 @@ export default function SellerProfile() {
     }
   };
 
+  // ENHANCED: Logout with iOS-compatible alert
   const handleLogout = () => {
     showCustomAlert(
       "🚪 Logout", 
@@ -382,39 +564,55 @@ export default function SellerProfile() {
       email: "Email Address",
       phone: "Phone Number",
       address: "Address",
-      businessName: "Business Name",
-      businessEmail: "Business Email",
-      businessPhone: "Business Phone",
-      businessAddress: "Business Address",
-      businessCity: "City",
-      businessState: "State",
-      businessCountry: "Country",
-      businessDescription: "Business Description"
+      name: "Business Name",
+      category: "Business Category",
+      location_address: "Business Address",
+      location_city: "City",
+      location_state: "State",
+      location_country: "Country",
+      nin: "NIN Number",
+      yearFounded: "Year Founded"
     };
     return labels[field] || field;
   };
 
   const getFieldPlaceholder = (field) => {
     const placeholders = {
-      businessName: "Enter your business name",
-      businessEmail: "Enter business email address",
-      businessPhone: "Enter business phone number",
-      businessAddress: "Enter business address",
-      businessCity: "Enter city",
-      businessState: "Enter state",
-      businessDescription: "Describe your business"
+      name: "Enter your business name",
+      category: "Enter business category",
+      location_address: "Enter business address",
+      location_city: "Enter city",
+      location_state: "Enter state",
+      nin: "Enter NIN number",
+      yearFounded: "Enter year founded"
     };
     return placeholders[field] || `Enter ${field}`;
   };
 
   const getKeyboardType = (field) => {
-    if (field === 'email' || field === 'businessEmail') return 'email-address';
-    if (field === 'phone' || field === 'businessPhone') return 'phone-pad';
+    if (field === 'email') return 'email-address';
+    if (field === 'phone') return 'phone-pad';
+    if (field === 'yearFounded') return 'number-pad';
+    if (field === 'nin') return 'number-pad';
     return 'default';
   };
 
   const displayValue = (value) => {
     return value || "Not provided";
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "Not available";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      return dateString;
+    }
   };
 
   const getRoleDisplayName = (role) => {
@@ -457,14 +655,14 @@ export default function SellerProfile() {
       title: "My Products",
       icon: "package",
       iconType: "feather",
-      count: "15",
+      count: businessStats.products.toString(),
       onPress: () => router.push("/seller/(tabs)/products"),
     },
     {
       title: "Orders",
       icon: "shopping-cart",
       iconType: "feather",
-      count: "23",
+      count: businessStats.orders.toString(),
       onPress: () => router.push("/seller/orders"),
     },
     {
@@ -477,7 +675,7 @@ export default function SellerProfile() {
       title: "Customer Reviews",
       icon: "star",
       iconType: "feather",
-      count: "47",
+      count: "0", // Placeholder
       onPress: () => router.push("/seller/reviews"),
     },
   ];
@@ -511,7 +709,11 @@ export default function SellerProfile() {
       title: "Store Status",
       icon: "store",
       iconType: "material",
-      rightElement: <Text style={[styles.settingsValue, {color: '#10B981'}]}>Active</Text>,
+      rightElement: (
+        <Text style={[styles.settingsValue, {color: businessInfo.isApproved ? '#10B981' : '#F59E0B'}]}>
+          {businessInfo.isApproved ? 'Approved' : 'Pending Approval'}
+        </Text>
+      ),
     },
   ];
 
@@ -534,22 +736,89 @@ export default function SellerProfile() {
 
   return (
     <View style={styles.container}>
-      {/* Custom Alert Modal */}
+      {/* ENHANCED: Custom Alert Modal from Buyer's Profile */}
       {Platform.OS !== 'ios' && (
-        <Modal visible={showAlert} transparent={true} animationType="fade" onRequestClose={hideAlert}>
+        <Modal
+          visible={showAlert}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={hideAlert}
+          statusBarTranslucent={true}
+        >
           <TouchableWithoutFeedback onPress={alertConfig.showActions ? undefined : hideAlert}>
             <View style={styles.alertOverlay}>
-              <Animated.View style={[styles.alertContainer, { transform: [{ scale: alertScaleAnim }], opacity: alertScaleAnim }]}>
-                <View style={styles.alertIconContainer}>
-                  <Ionicons name={alertConfig.icon} size={24} color="#FFFFFF" />
+              <Animated.View 
+                style={[
+                  styles.alertContainer,
+                  { 
+                    transform: [{
+                      scale: alertScaleAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.8, 1]
+                      })
+                    }],
+                    opacity: alertScaleAnim,
+                    backgroundColor: alertConfig.type === "success" ? "#F0F9FF" : 
+                                   alertConfig.type === "error" ? "#FEF2F2" : 
+                                   alertConfig.type === "warning" ? "#FFFBEB" : "#F0F9FF"
+                  }
+                ]}
+              >
+                <View style={[
+                  styles.alertIconContainer,
+                  { backgroundColor: alertConfig.type === "success" ? "#10B981" : 
+                                   alertConfig.type === "error" ? "#DC2626" : 
+                                   alertConfig.type === "warning" ? "#F59E0B" : "#7C3AED" }
+                ]}>
+                  <Ionicons 
+                    name={alertConfig.icon} 
+                    size={24} 
+                    color="#FFFFFF" 
+                  />
                 </View>
+                
                 <View style={styles.alertContent}>
                   <Text style={styles.alertTitle}>{alertConfig.title}</Text>
                   <Text style={styles.alertMessage}>{alertConfig.message}</Text>
+                  
+                  {alertConfig.showActions && (
+                    <View style={styles.alertActions}>
+                      {alertConfig.cancelText && (
+                        <TouchableOpacity 
+                          style={styles.alertCancelButton}
+                          onPress={() => {
+                            hideAlert();
+                            alertConfig.onCancel?.();
+                          }}
+                        >
+                          <Text style={styles.alertCancelText}>{alertConfig.cancelText}</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity 
+                        style={[
+                          styles.alertConfirmButton,
+                          { backgroundColor: alertConfig.type === "success" ? "#10B981" : 
+                                          alertConfig.type === "error" ? "#DC2626" : 
+                                          alertConfig.type === "warning" ? "#F59E0B" : "#7C3AED" }
+                        ]}
+                        onPress={() => {
+                          hideAlert();
+                          alertConfig.onConfirm?.();
+                        }}
+                      >
+                        <Text style={styles.alertConfirmText}>
+                          {alertConfig.confirmText || "OK"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}              
                 </View>
-                <TouchableOpacity onPress={hideAlert} style={styles.alertCloseButton}>
-                  <Ionicons name="close" size={20} color="#6B7280" />
-                </TouchableOpacity>
+                
+                {!alertConfig.showActions && (
+                  <TouchableOpacity onPress={hideAlert} style={styles.alertCloseButton}>
+                    <Ionicons name="close" size={20} color="#6B7280" />
+                  </TouchableOpacity>
+                )}
               </Animated.View>
             </View>
           </TouchableWithoutFeedback>
@@ -562,13 +831,13 @@ export default function SellerProfile() {
           <Image
             source={{
               uri: businessInfo.businessImage || "https://ui-avatars.com/api/?name=" +
-                encodeURIComponent(businessInfo.businessName || "Business") +
+                encodeURIComponent(businessInfo.name || "Business") +
                 "&background=7C3AED&color=fff&size=200",
             }}
             style={styles.avatar}
           />
           <View style={styles.userInfo}>
-            <Text style={styles.name}>{businessInfo.businessName}</Text>
+            <Text style={styles.name}>{businessInfo.name || "Your Business"}</Text>
             <View style={styles.roleContainer}>
               <Text style={styles.role}>
                 {getRoleDisplayName(currentRole)}
@@ -583,17 +852,17 @@ export default function SellerProfile() {
             </View>
             <View style={styles.statsContainer}>
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>15</Text>
+                <Text style={styles.statNumber}>{businessStats.products}</Text>
                 <Text style={styles.statLabel}>Products</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>23</Text>
+                <Text style={styles.statNumber}>{businessStats.orders}</Text>
                 <Text style={styles.statLabel}>Orders</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>4.8</Text>
+                <Text style={styles.statNumber}>{businessStats.rating || "0.0"}</Text>
                 <Text style={styles.statLabel}>Rating</Text>
               </View>
             </View>
@@ -601,7 +870,7 @@ export default function SellerProfile() {
         </View>
         <TouchableOpacity 
           style={styles.editButton}
-          onPress={() => openEditModal('businessName', businessInfo.businessName, true)}
+          onPress={() => openEditModal('name', businessInfo.name, true)}
         >
           <Feather name="edit-3" size={18} color="#7C3AED" />
           <Text style={styles.editButtonText}>Edit Store</Text>
@@ -618,44 +887,59 @@ export default function SellerProfile() {
             {/* Business Name */}
             <TouchableOpacity 
               style={styles.infoRow}
-              onPress={() => openEditModal('businessName', businessInfo.businessName, true)}
+              onPress={() => openEditModal('name', businessInfo.name, true)}
             >
               <View style={styles.infoLeft}>
                 {getIconComponent("feather", "store", "#6B7280", 18)}
                 <Text style={styles.infoLabel}>Business Name</Text>
               </View>
               <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(businessInfo.businessName)}</Text>
+                <Text style={styles.infoValue}>{displayValue(businessInfo.name)}</Text>
                 <Feather name="edit-2" size={16} color="#9CA3AF" />
               </View>
             </TouchableOpacity>
 
-            {/* Business Email */}
+            {/* Business Category */}
             <TouchableOpacity 
               style={styles.infoRow}
-              onPress={() => openEditModal('businessEmail', businessInfo.businessEmail, true)}
+              onPress={() => openEditModal('category', businessInfo.category, true)}
             >
               <View style={styles.infoLeft}>
-                {getIconComponent("feather", "mail", "#6B7280", 18)}
-                <Text style={styles.infoLabel}>Business Email</Text>
+                {getIconComponent("feather", "tag", "#6B7280", 18)}
+                <Text style={styles.infoLabel}>Business Category</Text>
               </View>
               <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(businessInfo.businessEmail)}</Text>
+                <Text style={styles.infoValue}>{displayValue(businessInfo.category)}</Text>
                 <Feather name="edit-2" size={16} color="#9CA3AF" />
               </View>
             </TouchableOpacity>
 
-            {/* Business Phone */}
+            {/* Year Founded */}
             <TouchableOpacity 
               style={styles.infoRow}
-              onPress={() => openEditModal('businessPhone', businessInfo.businessPhone, true)}
+              onPress={() => openEditModal('yearFounded', businessInfo.yearFounded, true)}
             >
               <View style={styles.infoLeft}>
-                {getIconComponent("feather", "phone", "#6B7280", 18)}
-                <Text style={styles.infoLabel}>Business Phone</Text>
+                {getIconComponent("feather", "calendar", "#6B7280", 18)}
+                <Text style={styles.infoLabel}>Year Founded</Text>
               </View>
               <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(businessInfo.businessPhone)}</Text>
+                <Text style={styles.infoValue}>{displayValue(businessInfo.yearFounded)}</Text>
+                <Feather name="edit-2" size={16} color="#9CA3AF" />
+              </View>
+            </TouchableOpacity>
+
+            {/* NIN Number */}
+            <TouchableOpacity 
+              style={styles.infoRow}
+              onPress={() => openEditModal('nin', businessInfo.nin, true)}
+            >
+              <View style={styles.infoLeft}>
+                {getIconComponent("feather", "credit-card", "#6B7280", 18)}
+                <Text style={styles.infoLabel}>NIN Number</Text>
+              </View>
+              <View style={styles.infoRight}>
+                <Text style={styles.infoValue}>{displayValue(businessInfo.nin)}</Text>
                 <Feather name="edit-2" size={16} color="#9CA3AF" />
               </View>
             </TouchableOpacity>
@@ -663,34 +947,56 @@ export default function SellerProfile() {
             {/* Business Address */}
             <TouchableOpacity 
               style={styles.infoRow}
-              onPress={() => openEditModal('businessAddress', businessInfo.businessAddress, true)}
+              onPress={() => openEditModal('location_address', businessInfo.location_address, true)}
             >
               <View style={styles.infoLeft}>
                 {getIconComponent("feather", "map-pin", "#6B7280", 18)}
                 <Text style={styles.infoLabel}>Business Address</Text>
               </View>
               <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(businessInfo.businessAddress)}</Text>
+                <Text style={styles.infoValue}>{displayValue(businessInfo.location_address)}</Text>
                 <Feather name="edit-2" size={16} color="#9CA3AF" />
               </View>
             </TouchableOpacity>
 
-            {/* Business Description */}
-            <TouchableOpacity 
-              style={styles.infoRow}
-              onPress={() => openEditModal('businessDescription', businessInfo.businessDescription, true)}
-            >
+            {/* Location */}
+            <View style={styles.infoRow}>
               <View style={styles.infoLeft}>
-                {getIconComponent("feather", "file-text", "#6B7280", 18)}
-                <Text style={styles.infoLabel}>Business Description</Text>
+                {getIconComponent("feather", "map", "#6B7280", 18)}
+                <Text style={styles.infoLabel}>Location</Text>
               </View>
               <View style={styles.infoRight}>
-                <Text style={styles.infoValue} numberOfLines={1}>
-                  {displayValue(businessInfo.businessDescription)}
+                <Text style={styles.infoValue}>
+                  {[businessInfo.location_city, businessInfo.location_state, businessInfo.location_country]
+                    .filter(Boolean)
+                    .join(', ') || "Not provided"}
                 </Text>
-                <Feather name="edit-2" size={16} color="#9CA3AF" />
               </View>
-            </TouchableOpacity>
+            </View>
+
+            {/* Approval Status */}
+            <View style={styles.infoRow}>
+              <View style={styles.infoLeft}>
+                {getIconComponent("feather", "check-circle", businessInfo.isApproved ? "#10B981" : "#F59E0B", 18)}
+                <Text style={styles.infoLabel}>Approval Status</Text>
+              </View>
+              <View style={styles.infoRight}>
+                <Text style={[styles.infoValue, {color: businessInfo.isApproved ? '#10B981' : '#F59E0B'}]}>
+                  {businessInfo.isApproved ? 'Approved' : 'Pending Approval'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Member Since */}
+            <View style={styles.infoRow}>
+              <View style={styles.infoLeft}>
+                {getIconComponent("feather", "clock", "#6B7280", 18)}
+                <Text style={styles.infoLabel}>Member Since</Text>
+              </View>
+              <View style={styles.infoRight}>
+                <Text style={styles.infoValue}>{formatDate(businessInfo.createdAt)}</Text>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -743,7 +1049,7 @@ export default function SellerProfile() {
                   <Text style={styles.menuText}>{item.title}</Text>
                 </View>
                 <View style={styles.menuRight}>
-                  {item.count && (
+                  {item.count && item.count !== "0" && (
                     <View style={styles.badge}>
                       <Text style={styles.badgeText}>{item.count}</Text>
                     </View>
@@ -773,6 +1079,25 @@ export default function SellerProfile() {
           </View>
         </View>
 
+        {/* REFRESH BUSINESS DATA BUTTON */}
+        {businessLoading && (
+          <View style={styles.refreshContainer}>
+            <ActivityIndicator size="small" color="#7C3AED" />
+            <Text style={styles.refreshText}>Loading business data...</Text>
+          </View>
+        )}
+
+        <TouchableOpacity 
+          style={styles.refreshButton}
+          onPress={loadBusinessData}
+          disabled={businessLoading}
+        >
+          <Feather name="refresh-cw" size={18} color="#7C3AED" />
+          <Text style={styles.refreshButtonText}>
+            {businessLoading ? "Refreshing..." : "Refresh Business Data"}
+          </Text>
+        </TouchableOpacity>
+
         {/* LOGOUT BUTTON */}
         <TouchableOpacity 
           style={styles.logoutBtn}
@@ -784,6 +1109,7 @@ export default function SellerProfile() {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Ready9ja Seller v1.0.0</Text>
+          <Text style={styles.footerSubtext}>Business ID: {businessInfo.id || "Not set"}</Text>
         </View>
       </ScrollView>
 
@@ -810,8 +1136,8 @@ export default function SellerProfile() {
                   keyboardType={getKeyboardType(editingField?.field)}
                   autoCapitalize={editingField?.field === 'email' ? 'none' : 'words'}
                   autoFocus={true}
-                  multiline={editingField?.field === 'businessDescription'}
-                  numberOfLines={editingField?.field === 'businessDescription' ? 3 : 1}
+                  multiline={editingField?.field === 'description'}
+                  numberOfLines={editingField?.field === 'description' ? 3 : 1}
                 />
 
                 <View style={styles.modalActions}>
@@ -901,7 +1227,7 @@ export default function SellerProfile() {
   );
 }
 
-// Keep all the same styles from your buyer profile, just update colors if needed
+// Updated styles with enhanced alert styles from buyer's profile
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -923,6 +1249,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
+    elevation: 8,
+    shadowColor: "#7C3AED",
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
   },
   headerContent: {
     flexDirection: "row",
@@ -1103,13 +1434,46 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     fontWeight: "500",
   },
+  refreshContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    marginHorizontal: 20,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  refreshText: {
+    color: "#6B7280",
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  refreshButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F5F3FF",
+    marginHorizontal: 20,
+    marginTop: 20,
+    borderRadius: 14,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: "#DDD6FE",
+  },
+  refreshButtonText: {
+    color: "#7C3AED",
+    fontWeight: "600",
+    fontSize: 16,
+    marginLeft: 8,
+  },
   logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FEF2F2",
     marginHorizontal: 20,
-    marginTop: 30,
+    marginTop: 20,
     marginBottom: 20,
     borderRadius: 14,
     paddingVertical: 16,
@@ -1130,12 +1494,17 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     fontSize: 12,
   },
+  footerSubtext: {
+    color: "#9CA3AF",
+    fontSize: 10,
+    marginTop: 4,
+  },
   error: {
     color: "#d9534f",
     fontSize: 18,
     marginBottom: 10,
   },
-  // Modal Styles (same as buyer profile)
+  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -1147,6 +1516,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     minHeight: 300,
+    marginBottom: Platform.OS === 'ios' ? 0 : 20,
   },
   modalHeader: {
     flexDirection: "row",
@@ -1218,6 +1588,11 @@ const styles = StyleSheet.create({
     padding: 20,
     width: "100%",
     maxWidth: 400,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   roleModalHeader: {
     flexDirection: "row",
@@ -1282,7 +1657,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6B7280",
   },
-  // Alert Styles
+  // ENHANCED: Alert Styles from Buyer's Profile
   alertOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -1298,12 +1673,16 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     flexDirection: "row",
     alignItems: "flex-start",
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   alertIconContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: "#7C3AED",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 16,
@@ -1321,6 +1700,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#6B7280",
     lineHeight: 22,
+    marginBottom: 16,
+  },
+  alertActions: {
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "flex-end",
+  },
+  alertCancelButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+  },
+  alertCancelText: {
+    color: "#374151",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  alertConfirmButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  alertConfirmText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
   },
   alertCloseButton: {
     padding: 4,

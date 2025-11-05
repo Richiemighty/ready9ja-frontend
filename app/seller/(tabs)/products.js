@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from 'expo-router';
+import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import api from '../../../constants/api';
 import { useAuth } from '../../../hooks/useAuth';
 
@@ -12,10 +14,43 @@ export default function SellerProducts() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [businessId, setBusinessId] = useState(null);
+  const [businessInfo, setBusinessInfo] = useState(null);
 
   useEffect(() => {
     loadBusinessIdAndProducts();
   }, []);
+
+  // Get token from storage
+  const getTokenFromStorage = async () => {
+    try {
+      let token;
+      if (Platform.OS === "web") {
+        token = await AsyncStorage.getItem("access_token");
+      } else {
+        token = await SecureStore.getItemAsync("access_token");
+      }
+      
+      if (!token) {
+        // Try to get from user_data as fallback
+        let userData;
+        if (Platform.OS === "web") {
+          userData = await AsyncStorage.getItem("user_data");
+        } else {
+          userData = await SecureStore.getItemAsync("user_data");
+        }
+        
+        if (userData) {
+          const parsed = JSON.parse(userData);
+          token = parsed.accessToken;
+        }
+      }
+      
+      return token;
+    } catch (error) {
+      console.error("Error getting token from storage:", error);
+      return null;
+    }
+  };
 
   const getAuthToken = async () => {
     try {
@@ -27,31 +62,87 @@ export default function SellerProducts() {
     }
   };
 
+  // Fetch business profile to get the actual business ID
+  const getBusinessProfile = async () => {
+    try {
+      const token = await getTokenFromStorage();
+      if (!token) {
+        console.warn("No token found for business profile");
+        return null;
+      }
+
+      console.log("Fetching business profile...");
+
+      const response = await fetch("https://ready9ja-api.onrender.com/api/v1/business/profile", {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log("Business profile not found - user may not have completed business registration");
+          return null;
+        }
+        throw new Error(`Failed to fetch business profile: ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      console.log("Business profile response:", responseData);
+
+      if (responseData.businessProfile) {
+        const businessData = responseData.businessProfile;
+        setBusinessInfo(businessData);
+        return businessData.id; // Return the actual business ID
+      } else {
+        throw new Error("No business profile found in response");
+      }
+
+    } catch (error) {
+      console.error('Error fetching business profile:', error);
+      return null;
+    }
+  };
+
   const getBusinessId = async () => {
     try {
+      // First try to get from business profile API
+      const businessProfileId = await getBusinessProfile();
+      if (businessProfileId) {
+        console.log("Found business ID from business profile:", businessProfileId);
+        return businessProfileId;
+      }
+
+      // Fallback to user data
       const userData = await getUser();
       
       if (userData?.user?.businessId) {
+        console.log("Found business ID from user data:", userData.user.businessId);
         return userData.user.businessId;
       }
       
       const token = await getAuthToken();
       if (!token) return null;
 
+      // Final fallback - try seller profile
       try {
         const sellerProfileResponse = await api.get('/seller/profile', {
           headers: { Authorization: `Bearer ${token}` }
         });
         
         if (sellerProfileResponse.data?.businessId) {
+          console.log("Found business ID from seller profile:", sellerProfileResponse.data.businessId);
           return sellerProfileResponse.data.businessId;
         }
       } catch (sellerError) {
-        console.log('Seller profile not available, using default business ID');
+        console.log('Seller profile not available');
       }
 
-      console.log('Using default business ID: 2');
-      return "2";
+      // If no business ID found, show appropriate message
+      console.log('No business ID found - user needs to complete business registration');
+      return null;
       
     } catch (error) {
       console.error('Error getting business ID:', error);
@@ -64,7 +155,20 @@ export default function SellerProducts() {
     try {
       const businessId = await getBusinessId();
       if (!businessId) {
-        Alert.alert('Business Not Found', 'Unable to find your business information. Please complete your seller profile.');
+        Alert.alert(
+          'Business Registration Required', 
+          'You need to complete your business registration before you can manage products. Please set up your business profile first.',
+          [
+            { 
+              text: 'Setup Business', 
+              onPress: () => router.push('/seller/business-setup') 
+            },
+            { 
+              text: 'Cancel', 
+              style: 'cancel' 
+            }
+          ]
+        );
         setLoading(false);
         return;
       }
@@ -203,15 +307,25 @@ export default function SellerProducts() {
         <View>
           <Text style={styles.headerTitle}>My Products</Text>
           <Text style={styles.headerSubtitle}>Manage your product catalog</Text>
-          {businessId && (
+          {businessInfo ? (
+            <View style={styles.businessInfoContainer}>
+              <Text style={styles.businessName}>{businessInfo.name}</Text>
+              <Text style={styles.businessIdText}>Business ID: {businessId}</Text>
+              <Text style={styles.businessStatus}>
+                Status: <Text style={{ color: businessInfo.isApproved ? '#10B981' : '#F59E0B' }}>
+                  {businessInfo.isApproved ? 'Approved' : 'Pending Approval'}
+                </Text>
+              </Text>
+            </View>
+          ) : businessId ? (
             <Text style={styles.businessIdText}>Business ID: {businessId}</Text>
-          )}
+          ) : null}
         </View>
         <TouchableOpacity 
           style={styles.addButton}
-          onPress={() => router.push('/seller/createProduct')}
+          onPress={() => router.push('/seller/addProduct')}
         >
-          <Ionicons name="add" size={20} color="#ffffff52" />
+          <Ionicons name="add" size={20} color="#FFFFFF" />
           <Text style={styles.addButtonText}>Add Product</Text>
         </TouchableOpacity>
       </View>
@@ -219,27 +333,31 @@ export default function SellerProducts() {
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#7C3AED" />
-          <Text style={styles.loadingText}>Loading your products...</Text>
+          <Text style={styles.loadingText}>
+            {businessId ? 'Loading your products...' : 'Loading business information...'}
+          </Text>
         </View>
       ) : (
         <FlatList
           data={products}
           keyExtractor={(item) => item.productId?.toString() || item.id?.toString()}
           ListHeaderComponent={
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{totalProducts}</Text>
-                <Text style={styles.statLabel}>Total Products</Text>
+            products.length > 0 ? (
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{totalProducts}</Text>
+                  <Text style={styles.statLabel}>Total Products</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{activeProducts}</Text>
+                  <Text style={styles.statLabel}>Active</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{outOfStockProducts}</Text>
+                  <Text style={styles.statLabel}>Out of Stock</Text>
+                </View>
               </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{activeProducts}</Text>
-                <Text style={styles.statLabel}>Active</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{outOfStockProducts}</Text>
-                <Text style={styles.statLabel}>Out of Stock</Text>
-              </View>
-            </View>
+            ) : null
           }
           renderItem={({ item }) => (
             <TouchableOpacity
@@ -311,14 +429,22 @@ export default function SellerProducts() {
               <Text style={styles.emptySubtext}>
                 {businessId 
                   ? 'Add your first product to get started' 
-                  : 'Unable to load products. Please check your business setup.'
+                  : 'Please complete your business registration to start adding products.'
                 }
               </Text>
               <TouchableOpacity 
                 style={styles.emptyButton}
-                onPress={() => router.push('/seller/addProduct')}
+                onPress={() => {
+                  if (businessId) {
+                    router.push('/seller/addProduct');
+                  } else {
+                    router.push('/seller/business-setup');
+                  }
+                }}
               >
-                <Text style={styles.emptyButtonText}>Add Your First Product</Text>
+                <Text style={styles.emptyButtonText}>
+                  {businessId ? 'Add Your First Product' : 'Setup Business'}
+                </Text>
               </TouchableOpacity>
             </View>
           }
@@ -352,6 +478,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: '#6B7280',
+    textAlign: 'center',
   },
   emptyState: {
     alignItems: 'center',
@@ -370,6 +497,7 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     marginTop: 8,
     textAlign: 'center',
+    lineHeight: 20,
   },
   emptyButton: {
     marginTop: 20,
@@ -388,6 +516,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     padding: 16,
+    paddingTop: 50,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
@@ -402,9 +531,23 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 4,
   },
+  businessInfoContainer: {
+    marginTop: 4,
+  },
+  businessName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#7C3AED',
+    marginBottom: 2,
+  },
   businessIdText: {
     fontSize: 12,
     color: '#9CA3AF',
+    marginTop: 2,
+  },
+  businessStatus: {
+    fontSize: 12,
+    color: '#6B7280',
     marginTop: 2,
   },
   addButton: {

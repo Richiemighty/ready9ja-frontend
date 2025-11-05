@@ -125,7 +125,7 @@ export default function SellerTabsLayout() {
           borderTopWidth: 1,
           borderTopColor: '#E5E7EB'
         },
-        headerRight: () => <DefaultHeaderRight />,
+        // headerRight: () => <DefaultHeaderRight />,
       }}
     >
       <Tabs.Screen
@@ -152,6 +152,7 @@ export default function SellerTabsLayout() {
       <Tabs.Screen
         name="products"
         options={{
+          headerShown: false,
           title: "Products",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cube-outline" size={size} color={color} />
@@ -161,6 +162,7 @@ export default function SellerTabsLayout() {
       <Tabs.Screen
         name="orders"
         options={{
+          headerShown: false,
           title: "Orders",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cart-outline" size={size} color={color} />
@@ -170,6 +172,7 @@ export default function SellerTabsLayout() {
       <Tabs.Screen
         name="analytics"
         options={{
+          headerShown: false,
           title: "Analytics",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="stats-chart-outline" size={size} color={color} />
