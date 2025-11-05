@@ -209,9 +209,9 @@ export default function SellerProducts() {
         </View>
         <TouchableOpacity 
           style={styles.addButton}
-          onPress={() => router.push('/seller/addProduct')}
+          onPress={() => router.push('/seller/createProduct')}
         >
-          <Ionicons name="add" size={20} color="#FFFFFF" />
+          <Ionicons name="add" size={20} color="#ffffff52" />
           <Text style={styles.addButtonText}>Add Product</Text>
         </TouchableOpacity>
       </View>
