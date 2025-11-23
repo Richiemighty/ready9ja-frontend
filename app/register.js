@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -5,20 +6,25 @@ import {
   Animated,
   Dimensions,
   Easing,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  View
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useAuth } from "../hooks/useAuth";
 
-const { width, height } = Dimensions.get('window');
+const { width, height } = Dimensions.get("window");
 
-export default function Register() {
+export default function RegisterScreen() {
   const router = useRouter();
   const { register, loading } = useAuth();
+
   const [form, setForm] = useState({
     firstname: "",
     lastname: "",
@@ -28,35 +34,13 @@ export default function Register() {
     role: "user",
   });
 
-  // Animation values
+  // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
-  const bgPulse = useRef(new Animated.Value(0)).current;
-  const buttonScale = useRef(new Animated.Value(1)).current;
-  const formFieldsAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(40)).current;
+  const heroAnim = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
-    // Start animations when component mounts
     Animated.parallel([
-      // Background pulse
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(bgPulse, {
-            toValue: 1,
-            duration: 4000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: false,
-          }),
-          Animated.timing(bgPulse, {
-            toValue: 0,
-            duration: 4000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: false,
-          }),
-        ])
-      ),
-      // Main container animations
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 800,
@@ -64,46 +48,24 @@ export default function Register() {
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 600,
-        easing: Easing.out(Easing.cubic),
+        duration: 800,
+        easing: Easing.out(Easing.exp),
         useNativeDriver: true,
       }),
-      Animated.timing(scaleAnim, {
+      Animated.spring(heroAnim, {
         toValue: 1,
-        duration: 700,
-        easing: Easing.out(Easing.back(1.2)),
+        friction: 5,
         useNativeDriver: true,
       }),
-      // Form fields staggered animation
-      Animated.sequence([
-        Animated.delay(300),
-        Animated.timing(formFieldsAnim, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-      ]),
     ]).start();
   }, []);
 
-  const handlePressIn = () => {
-    Animated.spring(buttonScale, {
-      toValue: 0.96,
-      friction: 3,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(buttonScale, {
-      toValue: 1,
-      friction: 3,
-      useNativeDriver: true,
-    }).start();
-  };
-
   const handleRegister = async () => {
-    // Validation
+    if (!form.firstname.trim() || !form.lastname.trim() || !form.email.trim()) {
+      Alert.alert("Error", "Please fill in all required fields.");
+      return;
+    }
+
     if (form.password !== form.confirmPassword) {
       Alert.alert("Error", "Passwords don't match");
       return;
@@ -115,322 +77,333 @@ export default function Register() {
     }
 
     try {
-      const res = await register(form);
-      
-      // Show success alert with email verification message
+      await register(form);
+
       Alert.alert(
-        "🎉 Account Created Successfully!", 
-        "Your account has been created successfully! Please check your email to verify your account before logging in.",
+        "🎉 Account Created Successfully!",
+        "Your account has been created. Please check your email to verify your account before logging in.",
         [
           {
             text: "Go to Login",
-            onPress: () => router.push("/login")
-          }
+            onPress: () => router.push("/login"),
+          },
         ]
       );
-      
     } catch (err) {
       const msg =
-        err.response?.data?.message ||
-        err.message ||
+        err?.response?.data?.message ||
+        err?.message ||
         "Registration failed. Please try again.";
       Alert.alert("Error", msg);
     }
   };
 
-  const backgroundColor = bgPulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['rgba(106, 13, 173, 0.03)', 'rgba(106, 13, 173, 0.08)'],
-  });
-
-  const formFieldsTranslateY = formFieldsAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [20, 0],
-  });
-
-  const formFieldsOpacity = formFieldsAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-  });
+  const handleGoHome = () => {
+    router.push("/");
+  };
 
   const fields = [
-    { key: "firstname", placeholder: "First Name", secure: false },
-    { key: "lastname", placeholder: "Last Name", secure: false },
-    { key: "email", placeholder: "Email Address", secure: false },
-    { key: "password", placeholder: "Password", secure: true },
-    { key: "confirmPassword", placeholder: "Confirm Password", secure: true },
+    {
+      key: "firstname",
+      label: "First Name",
+      placeholder: "Enter your first name",
+      icon: "person-outline",
+      keyboardType: "default",
+      autoCapitalize: "words",
+      secure: false,
+    },
+    {
+      key: "lastname",
+      label: "Last Name",
+      placeholder: "Enter your last name",
+      icon: "person-outline",
+      keyboardType: "default",
+      autoCapitalize: "words",
+      secure: false,
+    },
+    {
+      key: "email",
+      label: "Email Address",
+      placeholder: "Enter your email address",
+      icon: "mail-outline",
+      keyboardType: "email-address",
+      autoCapitalize: "none",
+      secure: false,
+    },
+    {
+      key: "password",
+      label: "Password",
+      placeholder: "Create a password",
+      icon: "lock-closed-outline",
+      keyboardType: "default",
+      autoCapitalize: "none",
+      secure: true,
+    },
+    {
+      key: "confirmPassword",
+      label: "Confirm Password",
+      placeholder: "Re-enter your password",
+      icon: "lock-closed-outline",
+      keyboardType: "default",
+      autoCapitalize: "none",
+      secure: true,
+    },
   ];
 
   return (
-    <Animated.View style={[styles.container, { backgroundColor }]}>
-      {/* Animated Background Elements */}
-      <Animated.View style={[styles.floatingShape, styles.shape1]} />
-      <Animated.View style={[styles.floatingShape, styles.shape2]} />
-      <Animated.View style={[styles.floatingShape, styles.shape3]} />
-      
-      <ScrollView 
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: "#F8FAFC" }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
         contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View 
+        {/* HERO IMAGE */}
+        <Animated.View
+          style={{
+            opacity: fadeAnim,
+            transform: [{ scale: heroAnim }],
+          }}
+        >
+          <Image
+            source={require("../assets/images/woman illustrating signupo.png")}
+            style={styles.heroImage}
+            resizeMode="contain"
+          />
+        </Animated.View>
+
+        {/* HEADER */}
+        <Animated.View
           style={[
-            styles.formContainer,
-            {
-              opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
-              ]
-            }
+            styles.headerContainer,
+            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
           ]}
         >
           <Text style={styles.title}>Create Your Account</Text>
           <Text style={styles.subtitle}>
-            Join Ready9ja and start your journey
+            Join Ready9ja and start shopping smarter
           </Text>
+        </Animated.View>
 
-          <Animated.View 
-            style={[
-              styles.fieldsContainer,
-              {
-                opacity: formFieldsOpacity,
-                transform: [{ translateY: formFieldsTranslateY }]
-              }
-            ]}
-          >
-            {fields.map((field, index) => (
-              <Animated.View 
-                key={field.key}
-                style={[
-                  styles.inputContainer,
-                  {
-                    opacity: formFieldsAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, 1],
-                    }),
-                    transform: [{
-                      translateY: formFieldsAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [10 * (index + 1), 0],
-                      }),
-                    }],
-                  },
-                ]}
-              >
-                <Text style={styles.label}>
-                  {field.placeholder}
-                  {field.key.includes('password') && ' *'}
-                </Text>
+        {/* FORM FIELDS */}
+        <Animated.View
+          style={{
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+            width: "100%",
+          }}
+        >
+          {fields.map((field) => (
+            <View key={field.key} style={styles.inputGroup}>
+              <Text style={styles.label}>{field.label}</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons
+                  name={field.icon}
+                  size={20}
+                  color="#7C3AED"
+                  style={styles.inputIcon}
+                />
                 <TextInput
-                  placeholder={`Enter your ${field.placeholder.toLowerCase()}`}
+                  placeholder={field.placeholder}
                   placeholderTextColor="#A78BFA"
                   secureTextEntry={field.secure}
+                  keyboardType={field.keyboardType}
+                  autoCapitalize={field.autoCapitalize}
+                  value={form[field.key]}
+                  onChangeText={(v) =>
+                    setForm((prev) => ({ ...prev, [field.key]: v }))
+                  }
                   style={styles.input}
-                  onChangeText={(v) => setForm({ ...form, [field.key]: v })}
-                  autoCapitalize={field.key === 'email' ? 'none' : 'words'}
                 />
-              </Animated.View>
-            ))}
-          </Animated.View>
+              </View>
+            </View>
+          ))}
 
-          <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
-            <Pressable
-              style={[styles.registerButton, loading && styles.buttonDisabled]}
-              onPress={handleRegister}
-              onPressIn={handlePressIn}
-              onPressOut={handlePressOut}
-              disabled={loading}
-            >
-              <Text style={styles.registerButtonText}>
-                {loading ? "Creating Account..." : "Create Account"}
-              </Text>
-            </Pressable>
-          </Animated.View>
-
-          <Pressable 
-            style={styles.loginLink}
-            onPress={() => router.push("/login")}
+          {/* REGISTER BUTTON */}
+          <Pressable
+            style={[styles.registerButton, loading && { opacity: 0.6 }]}
+            onPress={handleRegister}
+            disabled={loading}
           >
-            <Text style={styles.loginText}>
-              Already have an account? <Text style={styles.loginHighlight}>Sign In</Text>
+            <Text style={styles.registerButtonText}>
+              {loading ? "Creating Account..." : "Create Account"}
             </Text>
           </Pressable>
 
-          {/* Security Features */}
-          <Animated.View 
-            style={[styles.securityFeatures, { opacity: formFieldsOpacity }]}
+          {/* LOGIN LINK */}
+          <Pressable
+            style={{ marginTop: 20, alignItems: "center" }}
+            onPress={() => router.push("/login")}
           >
-            <View style={styles.securityItem}>
-              <Text style={styles.securityIcon}>🔒</Text>
-              <Text style={styles.securityText}>Your data is securely encrypted</Text>
+            <Text style={styles.loginText}>
+              Already have an account?{" "}
+              <Text style={styles.loginHighlight}>Sign In</Text>
+            </Text>
+          </Pressable>
+
+          {/* GO HOME BUTTON */}
+          <TouchableOpacity style={styles.homeBtn} onPress={handleGoHome}>
+            <Ionicons name="home-outline" size={20} color="#7C3AED" />
+            <Text style={styles.homeBtnText}>Go to Home</Text>
+          </TouchableOpacity>
+
+          {/* SECURITY / BENEFITS LIST */}
+          <View style={styles.securityContainer}>
+            <View style={styles.securityRow}>
+              <Ionicons name="shield-checkmark" size={18} color="#10B981" />
+              <Text style={styles.securityText}>
+                Your data is securely encrypted
+              </Text>
             </View>
-            <View style={styles.securityItem}>
-              <Text style={styles.securityIcon}>📧</Text>
-              <Text style={styles.securityText}>Email verification required</Text>
+            <View style={styles.securityRow}>
+              <Ionicons name="mail-outline" size={18} color="#7C3AED" />
+              <Text style={styles.securityText}>
+                Email verification keeps your account safe
+              </Text>
             </View>
-            <View style={styles.securityItem}>
-              <Text style={styles.securityIcon}>🌟</Text>
-              <Text style={styles.securityText}>Join thousands of happy users</Text>
+            <View style={styles.securityRow}>
+              <Ionicons name="cart-outline" size={18} color="#F59E0B" />
+              <Text style={styles.securityText}>
+                Access thousands of products instantly
+              </Text>
             </View>
-          </Animated.View>
+          </View>
         </Animated.View>
       </ScrollView>
-    </Animated.View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 60,
+    justifyContent: "flex-start",
   },
-  formContainer: {
-    backgroundColor: 'white',
-    borderRadius: 24,
-    padding: 30,
-    shadowColor: '#7C3AED',
-    shadowOffset: {
-      width: 0,
-      height: 12,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 25,
-    elevation: 15,
+
+  heroImage: {
+    width: "100%",
+    height: height * 0.3,
+    alignSelf: "center",
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 8,
-    color: '#7C3AED',
-    textShadowColor: 'rgba(124, 58, 237, 0.2)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 40,
-    color: '#6B7280',
-    lineHeight: 22,
-  },
-  fieldsContainer: {
-    marginBottom: 30,
-  },
-  inputContainer: {
+
+  headerContainer: {
+    alignItems: "center",
     marginBottom: 20,
   },
+
+  title: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#7C3AED",
+  },
+
+  subtitle: {
+    fontSize: 15,
+    color: "#6B7280",
+    marginTop: 6,
+    textAlign: "center",
+  },
+
+  inputGroup: {
+    marginBottom: 14,
+  },
+
   label: {
     fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#7C3AED',
-    textTransform: 'capitalize',
+    fontWeight: "600",
+    color: "#4B5563",
+    marginBottom: 6,
   },
-  input: {
+
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 2,
-    borderColor: '#E9D5FF',
-    borderRadius: 16,
-    padding: 16,
-    fontSize: 16,
-    backgroundColor: 'white',
-    color: '#7C3AED',
-    shadowColor: '#7C3AED',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderColor: "#E9D5FF",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    minHeight: 52,
   },
+
+  inputIcon: {
+    marginRight: 6,
+  },
+
+  input: {
+    flex: 1,
+    fontSize: 15,
+    color: "#111827",
+  },
+
   registerButton: {
-    backgroundColor: '#7C3AED',
+    backgroundColor: "#7C3AED",
     borderRadius: 16,
-    padding: 18,
-    alignItems: 'center',
+    paddingVertical: 16,
+    alignItems: "center",
     marginTop: 10,
-    shadowColor: '#7C3AED',
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowColor: "#7C3AED",
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
-  buttonDisabled: {
-    backgroundColor: '#C4B5FD',
-    shadowOpacity: 0.1,
-  },
+
   registerButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "700",
   },
-  loginLink: {
-    marginTop: 25,
-    alignItems: 'center',
-    padding: 10,
-  },
+
   loginText: {
-    color: '#6B7280',
+    color: "#6B7280",
     fontSize: 15,
   },
+
   loginHighlight: {
-    color: '#F59E0B',
-    fontWeight: 'bold',
+    color: "#F59E0B",
+    fontWeight: "700",
   },
-  securityFeatures: {
+
+  homeBtn: {
     marginTop: 30,
-    paddingTop: 20,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3E8FF",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
+  },
+
+  homeBtnText: {
+    color: "#7C3AED",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+
+  securityContainer: {
+    marginTop: 30,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: "#E5E7EB",
+    paddingTop: 18,
+    gap: 10,
   },
-  securityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+
+  securityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
-  securityIcon: {
-    fontSize: 16,
-    marginRight: 12,
-  },
+
   securityText: {
     fontSize: 13,
-    color: '#6B7280',
+    color: "#4B5563",
     flex: 1,
-  },
-  floatingShape: {
-    position: 'absolute',
-    borderRadius: 500,
-    opacity: 0.3,
-  },
-  shape1: {
-    width: 150,
-    height: 150,
-    backgroundColor: '#7C3AED',
-    top: '5%',
-    left: '-10%',
-  },
-  shape2: {
-    width: 100,
-    height: 100,
-    backgroundColor: '#F59E0B',
-    top: '15%',
-    right: '-5%',
-  },
-  shape3: {
-    width: 80,
-    height: 80,
-    backgroundColor: '#7C3AED',
-    bottom: '10%',
-    left: '20%',
-    opacity: 0.2,
   },
 });

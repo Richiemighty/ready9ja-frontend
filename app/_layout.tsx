@@ -9,6 +9,7 @@ export default function RootLayout() {
       <AuthProvider>
         <CartProvider>
           <Slot /> 
+          {/* <Slot initialRouteName="/" /> */}
         </CartProvider>
       </AuthProvider>
     </GestureHandlerRootView>
