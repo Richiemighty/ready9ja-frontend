@@ -1,14 +1,23 @@
+// app/buyer/_layout.js
 import { Stack } from "expo-router";
-import { CartProvider } from "../../contexts/CartContext";
 
 export default function BuyerLayout() {
   return (
-    <CartProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        {/* This tells Expo Router to load everything inside (tabs) first */}
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        {/* Other non-tab routes (product, seller, chat) will appear here automatically */}
-      </Stack>
-    </CartProvider>
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* Load the tab navigation inside buyer/(tabs)/_layout.js */}
+      <Stack.Screen name="(tabs)" />
+
+      {/* Other buyer pages OUTSIDE tabs */}
+      <Stack.Screen name="become-seller" />
+      <Stack.Screen name="dashboard" />
+      <Stack.Screen name="orders" />
+      <Stack.Screen name="payments" />
+      <Stack.Screen name="wishlist" />
+      <Stack.Screen name="product/[id]" />
+      <Stack.Screen name="seller/[id]" />
+      {/* <Stack.Screen name="settings" /> */}
+      <Stack.Screen name="promotions" />
+      {/* <Stack.Screen name="contact" /> */}
+    </Stack>
   );
 }

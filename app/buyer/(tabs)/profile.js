@@ -3,7 +3,7 @@ import {
   FontAwesome,
   Ionicons,
   MaterialCommunityIcons,
-  MaterialIcons
+  MaterialIcons,
 } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -25,7 +25,7 @@ import {
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  View
+  View,
 } from "react-native";
 import { useAuth } from "../../../hooks/useAuth";
 
@@ -48,12 +48,12 @@ export default function Profile() {
   const [showAlert, setShowAlert] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
 
-  // Use refs for animations
+  // animations
   const slideAnim = useRef(new Animated.Value(300)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const alertScaleAnim = useRef(new Animated.Value(0)).current;
 
-  // cross-platform getter and setter
+  // cross-platform storage helpers
   const getItem = async (key) => {
     if (Platform.OS === "web") return AsyncStorage.getItem(key);
     return SecureStore.getItemAsync(key);
@@ -69,43 +69,55 @@ export default function Profile() {
     loadCurrentRole();
   }, []);
 
-  // SIMPLIFIED Alert System for iOS compatibility
+  // generic “Coming Soon” helper
+  const comingSoon = () => {
+    showCustomAlert(
+      "Coming Soon",
+      "This feature will be available shortly!",
+      "info"
+    );
+  };
+
+  // SIMPLIFIED Alert System (with iOS-friendly behavior)
   const showCustomAlert = (title, message, type = "info", options = {}) => {
-    // On iOS, use native Alert for better compatibility
-    if (Platform.OS === 'ios' && options.showActions) {
+    if (Platform.OS === "ios" && options.showActions) {
       Alert.alert(
         title,
         message,
         [
           {
-            text: options.cancelText || 'Cancel',
-            style: 'cancel',
-            onPress: options.onCancel
+            text: options.cancelText || "Cancel",
+            style: "cancel",
+            onPress: options.onCancel,
           },
           {
-            text: options.confirmText || 'OK',
-            style: type === 'error' ? 'destructive' : 'default',
-            onPress: options.onConfirm
-          }
-        ].filter(Boolean) // Remove null buttons
+            text: options.confirmText || "OK",
+            style: type === "error" ? "destructive" : "default",
+            onPress: options.onConfirm,
+          },
+        ].filter(Boolean)
       );
       return;
     }
 
-    // For non-iOS or non-action alerts, use custom modal
     setAlertConfig({
       title,
       message,
       type,
-      icon: type === "success" ? "checkmark-circle" : 
-            type === "error" ? "close-circle" : 
-            type === "warning" ? "warning" : "information",
-      ...options
+      icon:
+        type === "success"
+          ? "checkmark-circle"
+          : type === "error"
+          ? "close-circle"
+          : type === "warning"
+          ? "warning"
+          : "information",
+      ...options,
     });
-    
+
     setShowAlert(true);
     alertScaleAnim.setValue(0);
-    
+
     Animated.spring(alertScaleAnim, {
       toValue: 1,
       tension: 100,
@@ -113,7 +125,6 @@ export default function Profile() {
       useNativeDriver: true,
     }).start();
 
-    // Auto hide for non-action alerts
     if (!options.showActions) {
       setTimeout(() => {
         hideAlert();
@@ -206,81 +217,72 @@ export default function Profile() {
     });
   };
 
-  // FIXED: Role switching with iOS-compatible alerts
   const handleRoleSwitch = async (newRole) => {
     try {
-      console.log("🔄 Starting role switch to:", newRole);
-      
       closeRoleSwitch();
-      
-      // Use the enhanced alert system
+
       showCustomAlert(
-        "🎭 Switch Dashboard?", 
-        `Are you sure you want to switch to ${getRoleDisplayName(newRole)} dashboard?`,
+        "Switch Dashboard?",
+        `Are you sure you want to switch to ${getRoleDisplayName(
+          newRole
+        )} dashboard?`,
         "info",
         {
           showActions: true,
           confirmText: "Continue",
           cancelText: "Cancel",
           onConfirm: async () => {
-            console.log("✅ User confirmed role switch to:", newRole);
-            
             try {
               await switchRole(newRole);
               setCurrentRole(newRole);
-              
+
               let redirectPath;
-              switch(newRole.toLowerCase()) {
-                case 'seller':
-                  redirectPath = '/seller/(tabs)/dashboard';
+              switch (newRole.toLowerCase()) {
+                case "seller":
+                  redirectPath = "/seller/(tabs)/dashboard";
                   break;
-                case 'admin':
-                  redirectPath = '/admin/(tabs)/dashboard';  
+                case "admin":
+                  redirectPath = "/admin/(tabs)/dashboard";
                   break;
-                case 'user':
+                case "user":
                 default:
-                  redirectPath = '/buyer/(tabs)/marketplace';
+                  redirectPath = "/buyer/(tabs)/marketplace";
               }
-              
-              console.log("🎯 Redirecting to:", redirectPath);
-              
-              // Show success message
+
               showCustomAlert(
-                "✅ Success!", 
-                `You are now viewing the ${getRoleDisplayName(newRole)} dashboard`,
+                "Success",
+                `You are now viewing the ${getRoleDisplayName(
+                  newRole
+                )} dashboard`,
                 "success",
-                {
-                  showActions: false,
-                  duration: 1500
-                }
+                { showActions: false, duration: 1500 }
               );
-              
+
               setTimeout(() => {
                 router.replace(redirectPath);
               }, 1600);
-              
-            } catch (switchError) {
-              console.error("❌ Error during role switch:", switchError);
+            } catch (err) {
+              console.error("Role switch error:", err);
               showCustomAlert(
-                "Error", 
-                "Failed to switch role. Please try again.", 
+                "Error",
+                "Failed to switch role. Please try again.",
                 "error"
               );
             }
           },
-          onCancel: () => {
-            console.log("❌ User cancelled role switch");
-          }
         }
       );
-      
     } catch (error) {
-      console.error("❌ Error in role switch flow:", error);
-      showCustomAlert("Error", "Failed to switch role. Please try again.", "error");
+      console.error("Error in role switch flow:", error);
+      showCustomAlert(
+        "Error",
+        "Failed to switch role. Please try again.",
+        "error"
+      );
     }
   };
 
-  // Profile update function
+  // PATCH profile
   const updateProfileDirectly = async (field, value) => {
     try {
       let token;
@@ -291,12 +293,11 @@ export default function Profile() {
       }
 
       if (!token) {
-        console.warn("⚠️ No token found");
+        console.warn("No token found");
         return false;
       }
 
       const payload = { [field]: value };
-      console.log("📤 Sending PATCH to /profile with:", payload);
 
       const response = await fetch(
         "https://ready9ja-api.onrender.com/api/v1/profile",
@@ -310,61 +311,77 @@ export default function Profile() {
         }
       );
 
-      const responseText = await response.text();
-
       if (!response.ok) {
-        console.error("❌ Update failed with status:", response.status);
+        console.error("Update failed with status:", response.status);
         return false;
       }
 
-      console.log("✅ Update successful");
       return true;
     } catch (error) {
-      console.error("❌ Update error:", error);
+      console.error("Update error:", error);
       return false;
     }
   };
 
   const handleSave = async () => {
     if (!editValue || !editValue.trim() || !editingField) {
-      showCustomAlert("Validation Error", "Please enter a valid value", "warning");
-      return;
-    }
+      showCustomAlert(
+        "Validation Error",
+        "Please enter a valid value",
+        "warning"
+      );
+    } else {
+      setIsSaving(true);
+      try {
+        const ok = await updateProfileDirectly(
+          editingField,
+          editValue.trim()
+        );
+        if (ok) {
+          const updatedUser = {
+            ...tempUser,
+            [editingField]: editValue.trim(),
+          };
+          setTempUser(updatedUser);
+          setUser(updatedUser);
 
-    setIsSaving(true);
-    try {
-      const updateSuccess = await updateProfileDirectly(editingField, editValue.trim());
-      
-      if (updateSuccess) {
-        const updatedUser = {
-          ...tempUser,
-          [editingField]: editValue.trim()
-        };
-        setTempUser(updatedUser);
-        setUser(updatedUser);
+          const userData = await getItem("user_data");
+          if (userData) {
+            const parsed = JSON.parse(userData);
+            parsed.user = updatedUser;
+            await setItem("user_data", JSON.stringify(parsed));
+          }
 
-        const userData = await getItem("user_data");
-        if (userData) {
-          const parsed = JSON.parse(userData);
-          parsed.user = updatedUser;
-          await setItem("user_data", JSON.stringify(parsed));
+          showCustomAlert(
+            "Success",
+            "Profile updated successfully!",
+            "success"
+          );
+        } else {
+          showCustomAlert(
+            "Error",
+            "Failed to update profile. Please try again.",
+            "error"
+          );
         }
-
-        showCustomAlert("Success", "Profile updated successfully!", "success");
+      } catch (error) {
+        console.error("Error updating profile:", error);
+        showCustomAlert(
+          "Error",
+          "Failed to update profile. Please try again.",
+          "error"
+        );
+      } finally {
+        setIsSaving(false);
+        closeEditModal();
       }
-    } catch (error) {
-      console.error("Error updating profile:", error);
-      showCustomAlert("Error", "Failed to update profile. Please try again.", "error");
-    } finally {
-      setIsSaving(false);
-      closeEditModal();
     }
   };
 
   const handleBecomeSeller = () => {
     if (isSeller) {
       showCustomAlert(
-        "🏪 Seller Account", 
+        "Seller Account",
         "You are already a registered seller!",
         "info"
       );
@@ -373,22 +390,16 @@ export default function Profile() {
     }
   };
 
-  // FIXED: Logout with iOS-compatible alert
   const handleLogout = () => {
-    showCustomAlert(
-      "🚪 Logout", 
-      "Are you sure you want to logout?",
-      "warning",
-      {
-        showActions: true,
-        confirmText: "Logout",
-        cancelText: "Cancel",
-        onConfirm: async () => {
-          await logout();
-          router.replace("/login");
-        }
-      }
-    );
+    showCustomAlert("Logout", "Are you sure you want to logout?", "warning", {
+      showActions: true,
+      confirmText: "Logout",
+      cancelText: "Cancel",
+      onConfirm: async () => {
+        await logout();
+        router.replace("/login");
+      },
+    });
   };
 
   const getFieldLabel = (field) => {
@@ -397,7 +408,7 @@ export default function Profile() {
       lastname: "Last Name",
       email: "Email Address",
       phone: "Phone Number",
-      address: "Address"
+      address: "Address",
     };
     return labels[field] || field;
   };
@@ -408,26 +419,24 @@ export default function Profile() {
       lastname: "Enter your last name",
       email: "Enter your email address",
       phone: "Enter your phone number",
-      address: "Enter your address"
+      address: "Enter your address",
     };
     return placeholders[field] || `Enter ${field}`;
   };
 
   const getKeyboardType = (field) => {
-    if (field === 'email') return 'email-address';
-    if (field === 'phone') return 'phone-pad';
-    return 'default';
+    if (field === "email") return "email-address";
+    if (field === "phone") return "phone-pad";
+    return "default";
   };
 
-  const displayValue = (value) => {
-    return value || "Not provided";
-  };
+  const displayValue = (value) => value || "Not provided";
 
   const getRoleDisplayName = (role) => {
     const roleNames = {
       user: "Buyer",
       seller: "Seller",
-      admin: "Administrator"
+      admin: "Administrator",
     };
     return roleNames[role] || role;
   };
@@ -436,45 +445,46 @@ export default function Profile() {
     const icons = {
       user: "person-outline",
       seller: "storefront-outline",
-      admin: "shield-outline"
+      admin: "shield-outline",
     };
     return icons[role] || "person-outline";
   };
 
+  // ✅ ONLY POINT TO EXISTING ROUTES; OTHERS = Coming Soon
   const menuItems = [
     {
       title: "My Orders",
       icon: "package",
       iconType: "feather",
       count: "5",
-      onPress: () => router.push("/orders"),
+      onPress: () => router.push("/buyer/orders"), // ✅ exists
     },
     {
       title: "Wishlist",
       icon: "heart",
       iconType: "feather",
       count: "12",
-      onPress: () => router.push("/wishlist"),
+      onPress: () => router.push("/buyer/wishlist"), // ✅ exists
     },
     {
       title: "Shipping Addresses",
       icon: "map-pin",
       iconType: "feather",
       count: "3",
-      onPress: () => router.push("/addresses"),
+      onPress: comingSoon, // ⛔ not created yet
     },
     {
       title: "Payment Methods",
       icon: "credit-card",
       iconType: "feather",
-      onPress: () => router.push("/payments"),
+      onPress: () => router.push("/buyer/payments"), // ✅ exists
     },
     {
       title: "My Reviews",
       icon: "star",
       iconType: "feather",
       count: "8",
-      onPress: () => router.push("/reviews"),
+      onPress: comingSoon, // ⛔ not created yet
     },
   ];
 
@@ -525,7 +535,7 @@ export default function Profile() {
       title: "Currency",
       icon: "dollar-sign",
       iconType: "feather",
-      rightElement: <Text style={styles.settingsValue}>USD ($)</Text>,
+      rightElement: <Text style={styles.settingsValue}>NGN (₦)</Text>,
     },
   ];
 
@@ -534,29 +544,34 @@ export default function Profile() {
       title: "Help Center",
       icon: "help-circle",
       iconType: "feather",
-      onPress: () => router.push("/help"),
+      onPress: comingSoon, // ⛔
     },
     {
       title: "Contact Support",
       icon: "headset",
       iconType: "material",
-      onPress: () => router.push("/support"),
+      onPress: comingSoon, // ⛔
     },
     {
       title: "About Us",
       icon: "info",
       iconType: "feather",
-      onPress: () => router.push("/about"),
+      onPress: comingSoon, // ⛔
     },
     {
       title: "Privacy Policy",
       icon: "shield",
       iconType: "feather",
-      onPress: () => router.push("/privacy"),
+      onPress: comingSoon, // ⛔
     },
   ];
 
-  const getIconComponent = (iconType, iconName, color = "#6B7280", size = 20) => {
+  const getIconComponent = (
+    iconType,
+    iconName,
+    color = "#6B7280",
+    size = 20
+  ) => {
     switch (iconType) {
       case "ionicons":
         return <Ionicons name={iconName} size={size} color={color} />;
@@ -567,7 +582,13 @@ export default function Profile() {
       case "feather":
         return <Feather name={iconName} size={size} color={color} />;
       case "material-community":
-        return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
+        return (
+          <MaterialCommunityIcons
+            name={iconName}
+            size={size}
+            color={color}
+          />
+        );
       default:
         return <Feather name={iconName} size={size} color={color} />;
     }
@@ -584,7 +605,10 @@ export default function Profile() {
     return (
       <View style={styles.centered}>
         <Text style={styles.error}>User not found</Text>
-        <TouchableOpacity onPress={() => router.replace("/login")} style={styles.logoutBtn}>
+        <TouchableOpacity
+          onPress={() => router.replace("/login")}
+          style={styles.logoutBtn}
+        >
           <Text style={styles.logoutText}>Go to Login</Text>
         </TouchableOpacity>
       </View>
@@ -592,8 +616,8 @@ export default function Profile() {
 
   return (
     <View style={styles.container}>
-      {/* Custom Alert Modal - Only show for non-iOS or non-action alerts */}
-      {Platform.OS !== 'ios' && (
+      {/* Custom Alert Modal (non-iOS) */}
+      {Platform.OS !== "ios" && (
         <Modal
           visible={showAlert}
           transparent={true}
@@ -601,61 +625,90 @@ export default function Profile() {
           onRequestClose={hideAlert}
           statusBarTranslucent={true}
         >
-          <TouchableWithoutFeedback onPress={alertConfig.showActions ? undefined : hideAlert}>
+          <TouchableWithoutFeedback
+            onPress={alertConfig.showActions ? undefined : hideAlert}
+          >
             <View style={styles.alertOverlay}>
-              <Animated.View 
+              <Animated.View
                 style={[
                   styles.alertContainer,
-                  { 
-                    transform: [{
-                      scale: alertScaleAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0.8, 1]
-                      })
-                    }],
+                  {
+                    transform: [
+                      {
+                        scale: alertScaleAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                    ],
                     opacity: alertScaleAnim,
-                    backgroundColor: alertConfig.type === "success" ? "#F0F9FF" : 
-                                   alertConfig.type === "error" ? "#FEF2F2" : 
-                                   alertConfig.type === "warning" ? "#FFFBEB" : "#F0F9FF"
-                  }
+                    backgroundColor:
+                      alertConfig.type === "success"
+                        ? "#F0F9FF"
+                        : alertConfig.type === "error"
+                        ? "#FEF2F2"
+                        : alertConfig.type === "warning"
+                        ? "#FFFBEB"
+                        : "#F0F9FF",
+                  },
                 ]}
               >
-                <View style={[
-                  styles.alertIconContainer,
-                  { backgroundColor: alertConfig.type === "success" ? "#10B981" : 
-                                   alertConfig.type === "error" ? "#DC2626" : 
-                                   alertConfig.type === "warning" ? "#F59E0B" : "#7C3AED" }
-                ]}>
-                  <Ionicons 
-                    name={alertConfig.icon} 
-                    size={24} 
-                    color="#FFFFFF" 
+                <View
+                  style={[
+                    styles.alertIconContainer,
+                    {
+                      backgroundColor:
+                        alertConfig.type === "success"
+                          ? "#10B981"
+                          : alertConfig.type === "error"
+                          ? "#DC2626"
+                          : alertConfig.type === "warning"
+                          ? "#F59E0B"
+                          : "#7C3AED",
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name={alertConfig.icon}
+                    size={24}
+                    color="#FFFFFF"
                   />
                 </View>
-                
+
                 <View style={styles.alertContent}>
                   <Text style={styles.alertTitle}>{alertConfig.title}</Text>
-                  <Text style={styles.alertMessage}>{alertConfig.message}</Text>
-                  
+                  <Text style={styles.alertMessage}>
+                    {alertConfig.message}
+                  </Text>
+
                   {alertConfig.showActions && (
                     <View style={styles.alertActions}>
                       {alertConfig.cancelText && (
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={styles.alertCancelButton}
                           onPress={() => {
                             hideAlert();
                             alertConfig.onCancel?.();
                           }}
                         >
-                          <Text style={styles.alertCancelText}>{alertConfig.cancelText}</Text>
+                          <Text style={styles.alertCancelText}>
+                            {alertConfig.cancelText}
+                          </Text>
                         </TouchableOpacity>
                       )}
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={[
                           styles.alertConfirmButton,
-                          { backgroundColor: alertConfig.type === "success" ? "#10B981" : 
-                                          alertConfig.type === "error" ? "#DC2626" : 
-                                          alertConfig.type === "warning" ? "#F59E0B" : "#7C3AED" }
+                          {
+                            backgroundColor:
+                              alertConfig.type === "success"
+                                ? "#10B981"
+                                : alertConfig.type === "error"
+                                ? "#DC2626"
+                                : alertConfig.type === "warning"
+                                ? "#F59E0B"
+                                : "#7C3AED",
+                          },
                         ]}
                         onPress={() => {
                           hideAlert();
@@ -667,11 +720,14 @@ export default function Profile() {
                         </Text>
                       </TouchableOpacity>
                     </View>
-                  )}              
+                  )}
                 </View>
-                
+
                 {!alertConfig.showActions && (
-                  <TouchableOpacity onPress={hideAlert} style={styles.alertCloseButton}>
+                  <TouchableOpacity
+                    onPress={hideAlert}
+                    style={styles.alertCloseButton}
+                  >
                     <Ionicons name="close" size={20} color="#6B7280" />
                   </TouchableOpacity>
                 )}
@@ -681,7 +737,7 @@ export default function Profile() {
         </Modal>
       )}
 
-      {/* HEADER SECTION */}
+      {/* HEADER */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <Image
@@ -694,13 +750,15 @@ export default function Profile() {
             style={styles.avatar}
           />
           <View style={styles.userInfo}>
-            <Text style={styles.name}>{user.firstname} {user.lastname}</Text>
+            <Text style={styles.name}>
+              {user.firstname} {user.lastname}
+            </Text>
             <View style={styles.roleContainer}>
               <Text style={styles.role}>
                 {getRoleDisplayName(currentRole)}
               </Text>
               {user.roles?.length > 1 && (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.roleSwitchButton}
                   onPress={openRoleSwitch}
                 >
@@ -727,127 +785,137 @@ export default function Profile() {
             </View>
           </View>
         </View>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.editButton}
-          onPress={() => openEditModal('firstname', user.firstname)}
+          onPress={() => openEditModal("firstname", user.firstname)}
         >
           <Feather name="edit-3" size={18} color="#7C3AED" />
           <Text style={styles.editButtonText}>Edit Profile</Text>
         </TouchableOpacity>
       </View>
 
-      {/* MAIN CONTENT SCROLLVIEW */}
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* SELLER REGISTRATION CTA */}
-        {!isSeller && currentRole === 'user' && user.roles?.length === 1 && (
-          <View style={styles.section}>
-            <TouchableOpacity 
-              style={styles.sellerCtaCard}
-              onPress={handleBecomeSeller}
-            >
-              <View style={styles.sellerCtaContent}>
-                <View style={styles.sellerIconContainer}>
-                  <Feather name="store" size={24} color="#7C3AED" />
+      {/* MAIN */}
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* BECOME SELLER CTA */}
+        {!isSeller &&
+          currentRole === "user" &&
+          user.roles?.length === 1 && (
+            <View style={styles.section}>
+              <TouchableOpacity
+                style={styles.sellerCtaCard}
+                onPress={handleBecomeSeller}
+              >
+                <View style={styles.sellerCtaContent}>
+                  <View style={styles.sellerIconContainer}>
+                    <Feather name="store" size={24} color="#7C3AED" />
+                  </View>
+                  <View style={styles.sellerCtaText}>
+                    <Text style={styles.sellerCtaTitle}>
+                      Are you a Small Business Owner?
+                    </Text>
+                    <Text style={styles.sellerCtaSubtitle}>
+                      Request to become a Seller and start selling on Ready9ja
+                    </Text>
+                  </View>
+                  <Feather name="chevron-right" size={20} color="#9CA3AF" />
                 </View>
-                <View style={styles.sellerCtaText}>
-                  <Text style={styles.sellerCtaTitle}>
-                    Are you a Small Business Owner?
-                  </Text>
-                  <Text style={styles.sellerCtaSubtitle}>
-                    Request to become a Seller and start selling on Ready9ja
-                  </Text>
+                <View style={styles.sellerCtaBadge}>
+                  <Text style={styles.sellerCtaBadgeText}>Start Selling</Text>
                 </View>
-                <Feather name="chevron-right" size={20} color="#9CA3AF" />
-              </View>
-              <View style={styles.sellerCtaBadge}>
-                <Text style={styles.sellerCtaBadgeText}>Start Selling</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        )}
+              </TouchableOpacity>
+            </View>
+          )}
 
-        {/* PERSONAL INFORMATION SECTION */}
+        {/* PERSONAL INFO */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
           <View style={styles.card}>
-            {/* First Name */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.infoRow}
-              onPress={() => openEditModal('firstname', user.firstname)}
+              onPress={() => openEditModal("firstname", user.firstname)}
             >
               <View style={styles.infoLeft}>
                 {getIconComponent("feather", "user", "#6B7280", 18)}
                 <Text style={styles.infoLabel}>First Name</Text>
               </View>
               <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(user.firstname)}</Text>
+                <Text style={styles.infoValue}>
+                  {displayValue(user.firstname)}
+                </Text>
                 <Feather name="edit-2" size={16} color="#9CA3AF" />
               </View>
             </TouchableOpacity>
 
-            {/* Last Name */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.infoRow}
-              onPress={() => openEditModal('lastname', user.lastname)}
+              onPress={() => openEditModal("lastname", user.lastname)}
             >
               <View style={styles.infoLeft}>
                 {getIconComponent("feather", "user", "#6B7280", 18)}
                 <Text style={styles.infoLabel}>Last Name</Text>
               </View>
               <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(user.lastname)}</Text>
+                <Text style={styles.infoValue}>
+                  {displayValue(user.lastname)}
+                </Text>
                 <Feather name="edit-2" size={16} color="#9CA3AF" />
               </View>
             </TouchableOpacity>
 
-            {/* Email */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.infoRow}
-              onPress={() => openEditModal('email', user.email)}
+              onPress={() => openEditModal("email", user.email)}
             >
               <View style={styles.infoLeft}>
                 {getIconComponent("feather", "mail", "#6B7280", 18)}
                 <Text style={styles.infoLabel}>Email Address</Text>
               </View>
               <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(user.email)}</Text>
+                <Text style={styles.infoValue}>
+                  {displayValue(user.email)}
+                </Text>
                 <Feather name="edit-2" size={16} color="#9CA3AF" />
               </View>
             </TouchableOpacity>
 
-            {/* Phone */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.infoRow}
-              onPress={() => openEditModal('phone', user.phone)}
+              onPress={() => openEditModal("phone", user.phone)}
             >
               <View style={styles.infoLeft}>
                 {getIconComponent("feather", "phone", "#6B7280", 18)}
                 <Text style={styles.infoLabel}>Phone Number</Text>
               </View>
               <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(user.phone)}</Text>
+                <Text style={styles.infoValue}>
+                  {displayValue(user.phone)}
+                </Text>
                 <Feather name="edit-2" size={16} color="#9CA3AF" />
               </View>
             </TouchableOpacity>
 
-            {/* Address */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.infoRow}
-              onPress={() => openEditModal('address', user.address)}
+              onPress={() => openEditModal("address", user.address)}
             >
               <View style={styles.infoLeft}>
                 {getIconComponent("feather", "map-pin", "#6B7280", 18)}
                 <Text style={styles.infoLabel}>Address</Text>
               </View>
               <View style={styles.infoRight}>
-                <Text style={styles.infoValue}>{displayValue(user.address)}</Text>
+                <Text style={styles.infoValue}>
+                  {displayValue(user.address)}
+                </Text>
                 <Feather name="edit-2" size={16} color="#9CA3AF" />
               </View>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* MENU SECTION */}
+        {/* MY ACCOUNT */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My Account</Text>
           <View style={styles.card}>
@@ -858,7 +926,12 @@ export default function Profile() {
                 onPress={item.onPress}
               >
                 <View style={styles.menuLeft}>
-                  {getIconComponent(item.iconType, item.icon, "#6B7280", 20)}
+                  {getIconComponent(
+                    item.iconType,
+                    item.icon,
+                    "#6B7280",
+                    20
+                  )}
                   <Text style={styles.menuText}>{item.title}</Text>
                 </View>
                 <View style={styles.menuRight}>
@@ -867,32 +940,39 @@ export default function Profile() {
                       <Text style={styles.badgeText}>{item.count}</Text>
                     </View>
                   )}
-                  <Feather name="chevron-right" size={18} color="#D1D5DB" />
+                  <Feather
+                    name="chevron-right"
+                    size={18}
+                    color="#D1D5DB"
+                  />
                 </View>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* SETTINGS SECTION */}
+        {/* SETTINGS */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settings</Text>
           <View style={styles.card}>
             {settingsItems.map((item, index) => (
               <View key={index} style={styles.menuItem}>
                 <View style={styles.menuLeft}>
-                  {getIconComponent(item.iconType, item.icon, "#6B7280", 20)}
+                  {getIconComponent(
+                    item.iconType,
+                    item.icon,
+                    "#6B7280",
+                    20
+                  )}
                   <Text style={styles.menuText}>{item.title}</Text>
                 </View>
-                <View style={styles.menuRight}>
-                  {item.rightElement}
-                </View>
+                <View style={styles.menuRight}>{item.rightElement}</View>
               </View>
             ))}
           </View>
         </View>
 
-        {/* SUPPORT SECTION */}
+        {/* SUPPORT */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Support</Text>
           <View style={styles.card}>
@@ -903,27 +983,32 @@ export default function Profile() {
                 onPress={item.onPress}
               >
                 <View style={styles.menuLeft}>
-                  {getIconComponent(item.iconType, item.icon, "#6B7280", 20)}
+                  {getIconComponent(
+                    item.iconType,
+                    item.icon,
+                    "#6B7280",
+                    20
+                  )}
                   <Text style={styles.menuText}>{item.title}</Text>
                 </View>
                 <View style={styles.menuRight}>
-                  <Feather name="chevron-right" size={18} color="#D1D5DB" />
+                  <Feather
+                    name="chevron-right"
+                    size={18}
+                    color="#D1D5DB"
+                  />
                 </View>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* LOGOUT BUTTON */}
-        <TouchableOpacity 
-          style={styles.logoutBtn}
-          onPress={handleLogout}
-        >
+        {/* LOGOUT */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Feather name="log-out" size={20} color="#EF4444" />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
 
-        {/* FOOTER */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Ready9ja v1.0.0</Text>
         </View>
@@ -938,21 +1023,24 @@ export default function Profile() {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView 
+            <KeyboardAvoidingView
               behavior={Platform.OS === "ios" ? "padding" : "height"}
               style={styles.keyboardAvoidingView}
             >
-              <Animated.View 
+              <Animated.View
                 style={[
                   styles.modalContent,
-                  { transform: [{ translateY: slideAnim }] }
+                  { transform: [{ translateY: slideAnim }] },
                 ]}
               >
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>
                     Edit {getFieldLabel(editingField)}
                   </Text>
-                  <TouchableOpacity onPress={closeEditModal} style={styles.closeButton}>
+                  <TouchableOpacity
+                    onPress={closeEditModal}
+                    style={styles.closeButton}
+                  >
                     <Feather name="x" size={24} color="#6B7280" />
                   </TouchableOpacity>
                 </View>
@@ -963,34 +1051,41 @@ export default function Profile() {
                   onChangeText={setEditValue}
                   placeholder={getFieldPlaceholder(editingField)}
                   keyboardType={getKeyboardType(editingField)}
-                  autoCapitalize={editingField === 'email' ? 'none' : 'words'}
+                  autoCapitalize={
+                    editingField === "email" ? "none" : "words"
+                  }
                   autoFocus={true}
                   returnKeyType="done"
                   onSubmitEditing={handleSave}
                 />
 
                 <View style={styles.modalActions}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.modalButton, styles.cancelButton]}
                     onPress={closeEditModal}
                     disabled={isSaving}
                   >
                     <Text style={styles.cancelButtonText}>Cancel</Text>
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
+
+                  <TouchableOpacity
                     style={[
-                      styles.modalButton, 
+                      styles.modalButton,
                       styles.saveButton,
-                      ((!editValue || !editValue.trim()) || isSaving) && styles.saveButtonDisabled
+                      ((!editValue || !editValue.trim()) || isSaving) &&
+                        styles.saveButtonDisabled,
                     ]}
                     onPress={handleSave}
-                    disabled={(!editValue || !editValue.trim()) || isSaving}
+                    disabled={
+                      (!editValue || !editValue.trim()) || isSaving
+                    }
                   >
                     {isSaving ? (
                       <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
-                      <Text style={styles.saveButtonText}>Save Changes</Text>
+                      <Text style={styles.saveButtonText}>
+                        Save Changes
+                      </Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -1000,7 +1095,7 @@ export default function Profile() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Role Switch Modal */}
+      {/* ROLE SWITCH MODAL */}
       <Modal
         visible={showRoleSwitch}
         transparent={true}
@@ -1010,23 +1105,30 @@ export default function Profile() {
       >
         <TouchableWithoutFeedback onPress={closeRoleSwitch}>
           <View style={styles.roleModalOverlay}>
-            <Animated.View 
+            <Animated.View
               style={[
                 styles.roleModalContent,
-                { 
+                {
                   opacity: fadeAnim,
-                  transform: [{
-                    scale: fadeAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.9, 1]
-                    })
-                  }]
-                }
+                  transform: [
+                    {
+                      scale: fadeAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.9, 1],
+                      }),
+                    },
+                  ],
+                },
               ]}
             >
               <View style={styles.roleModalHeader}>
-                <Text style={styles.roleModalTitle}>Switch Dashboard</Text>
-                <TouchableOpacity onPress={closeRoleSwitch} style={styles.roleCloseButton}>
+                <Text style={styles.roleModalTitle}>
+                  Switch Dashboard
+                </Text>
+                <TouchableOpacity
+                  onPress={closeRoleSwitch}
+                  style={styles.roleCloseButton}
+                >
                   <Feather name="x" size={24} color="#6B7280" />
                 </TouchableOpacity>
               </View>
@@ -1041,26 +1143,35 @@ export default function Profile() {
                     key={index}
                     style={[
                       styles.roleItem,
-                      currentRole === roleObj.name && styles.roleItemActive
+                      currentRole === roleObj.name &&
+                        styles.roleItemActive,
                     ]}
                     onPress={() => handleRoleSwitch(roleObj.name)}
                   >
                     <View style={styles.roleIconContainer}>
-                      <Ionicons 
-                        name={getRoleIcon(roleObj.name)} 
-                        size={24} 
-                        color={currentRole === roleObj.name ? "#7C3AED" : "#6B7280"} 
+                      <Ionicons
+                        name={getRoleIcon(roleObj.name)}
+                        size={24}
+                        color={
+                          currentRole === roleObj.name
+                            ? "#7C3AED"
+                            : "#6B7280"
+                        }
                       />
                     </View>
                     <View style={styles.roleInfo}>
-                      <Text style={[
-                        styles.roleName,
-                        currentRole === roleObj.name && styles.roleNameActive
-                      ]}>
+                      <Text
+                        style={[
+                          styles.roleName,
+                          currentRole === roleObj.name &&
+                            styles.roleNameActive,
+                        ]}
+                      >
                         {getRoleDisplayName(roleObj.name)}
                       </Text>
                       <Text style={styles.roleDescription}>
-                        {roleObj.description || `Access ${roleObj.name} features`}
+                        {roleObj.description ||
+                          `Access ${roleObj.name} features`}
                       </Text>
                     </View>
                     {currentRole === roleObj.name && (
@@ -1078,19 +1189,14 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-  },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
   centered: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#F8FAFC",
   },
-  scrollView: {
-    flex: 1,
-  },
+  scrollView: { flex: 1 },
   header: {
     backgroundColor: "#7C3AED",
     paddingTop: 60,
@@ -1104,10 +1210,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowRadius: 12,
   },
-  headerContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  headerContent: { flexDirection: "row", alignItems: "center" },
   avatar: {
     width: 80,
     height: 80,
@@ -1115,20 +1218,9 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "rgba(255,255,255,0.3)",
   },
-  userInfo: {
-    marginLeft: 15,
-    flex: 1,
-  },
-  name: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#fff",
-  },
-  roleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 2,
-  },
+  userInfo: { marginLeft: 15, flex: 1 },
+  name: { fontSize: 24, fontWeight: "bold", color: "#fff" },
+  roleContainer: { flexDirection: "row", alignItems: "center", marginTop: 2 },
   role: {
     color: "rgba(255,255,255,0.9)",
     fontSize: 14,
@@ -1154,14 +1246,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
     alignItems: "center",
   },
-  statItem: {
-    alignItems: "center",
-  },
-  statNumber: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
+  statItem: { alignItems: "center" },
+  statNumber: { color: "#fff", fontSize: 16, fontWeight: "bold" },
   statLabel: {
     color: "rgba(255,255,255,0.7)",
     fontSize: 12,
@@ -1189,10 +1275,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 6,
   },
-  section: {
-    marginTop: 24,
-    paddingHorizontal: 20,
-  },
+  section: { marginTop: 24, paddingHorizontal: 20 },
   sellerCtaCard: {
     backgroundColor: "#7C3AED",
     borderRadius: 16,
@@ -1217,9 +1300,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 12,
   },
-  sellerCtaText: {
-    flex: 1,
-  },
+  sellerCtaText: { flex: 1 },
   sellerCtaTitle: {
     fontSize: 16,
     fontWeight: "bold",
@@ -1238,11 +1319,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
   },
-  sellerCtaBadgeText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
+  sellerCtaBadgeText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
@@ -1268,20 +1345,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
-  menuLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  menuLeft: { flexDirection: "row", alignItems: "center" },
   menuText: {
     fontSize: 16,
     color: "#374151",
     marginLeft: 12,
     fontWeight: "500",
   },
-  menuRight: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  menuRight: { flexDirection: "row", alignItems: "center" },
   badge: {
     backgroundColor: "#7C3AED",
     borderRadius: 12,
@@ -1289,11 +1360,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     marginRight: 8,
   },
-  badgeText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
+  badgeText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
   infoRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1303,11 +1370,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
-  infoLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
+  infoLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
   infoLabel: {
     fontSize: 14,
     color: "#6B7280",
@@ -1352,36 +1415,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 8,
   },
-  footer: {
-    alignItems: "center",
-    paddingVertical: 20,
-  },
-  footerText: {
-    color: "#9CA3AF",
-    fontSize: 12,
-  },
-  error: {
-    color: "#d9534f",
-    fontSize: 18,
-    marginBottom: 10,
-  },
-  // Modal Styles
+  footer: { alignItems: "center", paddingVertical: 20 },
+  footerText: { color: "#9CA3AF", fontSize: 12 },
+  error: { color: "#d9534f", fontSize: 18, marginBottom: 10 },
+
+  // edit modal
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "flex-end",
   },
-  keyboardAvoidingView: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
+  keyboardAvoidingView: { flex: 1, justifyContent: "flex-end" },
   modalContent: {
     backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
     minHeight: 300,
-    marginBottom: Platform.OS === 'ios' ? 0 : 20,
+    marginBottom: Platform.OS === "ios" ? 0 : 20,
   },
   modalHeader: {
     flexDirection: "row",
@@ -1389,14 +1440,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#1F2937",
-  },
-  closeButton: {
-    padding: 4,
-  },
+  modalTitle: { fontSize: 20, fontWeight: "bold", color: "#1F2937" },
+  closeButton: { padding: 4 },
   textInput: {
     borderWidth: 1,
     borderColor: "#D1D5DB",
@@ -1406,10 +1451,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     backgroundColor: "#F9FAFB",
   },
-  modalActions: {
-    flexDirection: "row",
-    gap: 12,
-  },
+  modalActions: { flexDirection: "row", gap: 12 },
   modalButton: {
     flex: 1,
     paddingVertical: 16,
@@ -1422,13 +1464,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#D1D5DB",
   },
-  saveButton: {
-    backgroundColor: "#7C3AED",
-  },
-  saveButtonDisabled: {
-    backgroundColor: "#9CA3AF",
-    opacity: 0.6,
-  },
+  saveButton: { backgroundColor: "#7C3AED" },
+  saveButtonDisabled: { backgroundColor: "#9CA3AF", opacity: 0.6 },
   cancelButtonText: {
     color: "#374151",
     fontSize: 16,
@@ -1439,7 +1476,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  // Role Switch Modal Styles
+
+  // role switch modal
   roleModalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -1470,18 +1508,14 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#1F2937",
   },
-  roleCloseButton: {
-    padding: 4,
-  },
+  roleCloseButton: { padding: 4 },
   roleModalSubtitle: {
     fontSize: 14,
     color: "#6B7280",
     marginBottom: 20,
     lineHeight: 20,
   },
-  roleList: {
-    gap: 8,
-  },
+  roleList: { gap: 8 },
   roleItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -1506,23 +1540,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
-  roleInfo: {
-    flex: 1,
-  },
+  roleInfo: { flex: 1 },
   roleName: {
     fontSize: 16,
     fontWeight: "600",
     color: "#374151",
     marginBottom: 2,
   },
-  roleNameActive: {
-    color: "#7C3AED",
-  },
-  roleDescription: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  // Alert Styles
+  roleNameActive: { color: "#7C3AED" },
+  roleDescription: { fontSize: 12, color: "#6B7280" },
+
+  // alert
   alertOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -1552,9 +1580,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 16,
   },
-  alertContent: {
-    flex: 1,
-  },
+  alertContent: { flex: 1 },
   alertTitle: {
     fontSize: 18,
     fontWeight: "bold",
@@ -1595,8 +1621,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  alertCloseButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
+  alertCloseButton: { padding: 4, marginLeft: 8 },
 });

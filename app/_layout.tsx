@@ -1,21 +1,16 @@
-import { Stack } from "expo-router";
+import { Slot } from "expo-router";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider } from "../contexts/AuthContext";
-import { CartProvider } from '../contexts/CartContext';
+import { CartProvider } from "../contexts/CartContext";
 
-
-export default function Layout() {
+export default function RootLayout() {
   return (
-    <AuthProvider>
-      <CartProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="register" />
-          <Stack.Screen name="buyer/(tabs)/marketplace" />
-          <Stack.Screen name="seller/dashboard" />
-          <Stack.Screen name="admin/dashboard" />
-          <Stack.Screen name="verify-email" />
-        </Stack>
-      </CartProvider>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <CartProvider>
+          <Slot /> 
+        </CartProvider>
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }

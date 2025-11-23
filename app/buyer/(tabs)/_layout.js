@@ -1,279 +1,318 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Image, Text, TouchableOpacity, View } from "react-native";
-import { CartProvider } from "../../../contexts/CartContext";
+import {
+  Alert,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  Vibration,
+  View,
+} from "react-native";
+import { useCart } from "../../../contexts/CartContext";
 import { useAuth } from "../../../hooks/useAuth";
 
 export default function BuyerTabsLayout() {
-  const { getActiveRole, getUser } = useAuth();
-  const [role, setRole] = useState("user");
-  const [user, setUser] = useState(null);
   const router = useRouter();
+  const { cartCount } = useCart();
+  const { getActiveRole, getUser } = useAuth();
+
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    loadActiveRole();
     loadUserData();
+    getActiveRole().catch(() => {});
   }, []);
-
-  const loadActiveRole = async () => {
-    try {
-      const activeRole = await getActiveRole();
-      setRole(activeRole);
-    } catch (error) {
-      console.error("Error loading active role:", error);
-    }
-  };
 
   const loadUserData = async () => {
     try {
-      const userData = await getUser();
-      setUser(userData);
-    } catch (error) {
-      console.error("Error loading user data:", error);
-    }
+      const usr = await getUser();
+      setUser(usr);
+    } catch {}
   };
 
-  const getRoleDisplayName = (role) => {
-    const roleNames = {
-      user: "Buyer",
-      seller: "Seller", 
-      admin: "Admin"
-    };
-    return roleNames[role] || role;
-  };
-
-  // Custom Header Left Component for Marketplace (User Profile)
+  // ---------------------------------------------
+  // NICE MARKETPLACE HEADER (Only for marketplace)
+  // ---------------------------------------------
   const MarketplaceHeaderLeft = () => (
-    <TouchableOpacity 
-      style={styles.userProfileSection}
-      onPress={() => router.push('/buyer/(tabs)/profile')}
+    <TouchableOpacity
+      onPress={() => router.push("/buyer/(tabs)/profile")}
+      style={styles.marketHeaderLeft}
+      activeOpacity={0.7}
     >
       <Image
         source={{
-          uri: user?.avatar || `https://ui-avatars.com/api/?name=${
-            encodeURIComponent(user?.firstname || 'User')
-          }&background=7C3AED&color=fff&size=100`
+          uri:
+            user?.avatar ||
+            `https://ui-avatars.com/api/?name=${
+              encodeURIComponent(user?.firstname || "User")
+            }&background=7C3AED&color=fff&size=100`,
         }}
-        style={styles.userAvatar}
+        style={styles.avatar}
       />
-      <View style={styles.userInfo}>
-        <Text style={styles.greeting}>Hello,</Text>
-        <Text style={styles.userName}>
-          {user?.firstname || 'User'}
-        </Text>
+
+      <View style={{ marginLeft: 10 }}>
+        <Text style={styles.helloText}>Hello 👋</Text>
+        <Text style={styles.userNameText}>{user?.firstname || "User"}</Text>
       </View>
     </TouchableOpacity>
   );
 
-  // Custom Header Right Component for Marketplace (Shortcut Icons)
   const MarketplaceHeaderRight = () => (
-    <View style={styles.shortcutIcons}>
-      {/* Customer Care */}
-      <TouchableOpacity 
-        style={styles.iconButton}
-        onPress={() => router.push('/support')}
+    <View style={styles.marketHeaderRight}>
+      {/* Support */}
+      <TouchableOpacity
+        style={styles.iconBtn}
+        onPress={() =>
+          Alert.alert("Coming Soon", "This feature will be available shortly!")
+        }
       >
         <Ionicons name="headset-outline" size={22} color="#7C3AED" />
       </TouchableOpacity>
 
       {/* Notifications */}
-      <TouchableOpacity 
-        style={styles.iconButton}
-        onPress={() => router.push('/notifications')}
+      <TouchableOpacity
+        style={styles.iconBtn}
+        onPress={() =>
+          Alert.alert("Coming Soon", "Notifications will be available soon!")
+        }
       >
         <Ionicons name="notifications-outline" size={22} color="#7C3AED" />
-        <View style={styles.notificationBadge}>
-          <Text style={styles.badgeText}>3</Text>
+        <View style={styles.notifBadge}>
+          <Text style={styles.notifBadgeText}>3</Text>
         </View>
       </TouchableOpacity>
     </View>
   );
 
-  // Default Header Right for other tabs
-  const DefaultHeaderRight = () => (
-    <TouchableOpacity 
-      style={styles.roleBadge}
-      onPress={() => router.push('/buyer/(tabs)/profile')}
+  // ---------------------------------------------
+  // CUSTOM CART HEADER
+  // ---------------------------------------------
+  const CartHeader = () => (
+    <View style={styles.cartHeader}>
+      <View>
+        <Text style={styles.cartHeaderTitle}>My Cart</Text>
+        <Text style={styles.cartHeaderSubtitle}>Review your items</Text>
+      </View>
+
+      <TouchableOpacity
+        onPress={() => {
+          Vibration.vibrate(10);
+          Alert.alert("Coming Soon", "Customer support is not available yet!");
+        }}
+      >
+        <Ionicons name="headset-outline" size={28} color="#ffffffee" />
+      </TouchableOpacity>
+    </View>
+  );
+
+  // ---------------------------------------------
+  // FLOATING CHAT BUBBLE
+  // ---------------------------------------------
+  const SupportBubble = () => (
+    <TouchableOpacity
+      style={styles.chatBubble}
+      onPress={() => {
+        Vibration.vibrate(10);
+        Alert.alert("Coming Soon", "Chat support will be added soon!");
+      }}
+      activeOpacity={0.8}
     >
-      <Ionicons name="person-circle-outline" size={20} color="#7C3AED" />
-      <Text style={styles.roleText}>
-        {getRoleDisplayName(role)}
-      </Text>
+      <Ionicons
+        name="chatbubble-ellipses-outline"
+        size={24}
+        color="#fff"
+      />
     </TouchableOpacity>
   );
 
+  // ---------------------------------------------
+  // MAIN TABS
+  // ---------------------------------------------
   return (
-    <CartProvider>
+    <>
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: "#7C3AED",
-          headerTitle: `${getRoleDisplayName(role)} Dashboard`,
-          headerShown: true,
-          headerStyle: {
-            backgroundColor: '#F5F3FF',
-            height: 100,
-          },
-          headerTitleAlign: "center",
-          headerRight: () => <DefaultHeaderRight />,
+          headerShadowVisible: false,
           tabBarStyle: {
             paddingBottom: 6,
-            paddingRight: 10,
-            paddingLeft: 10,
-            height: 85,
-            borderTopWidth: 0.5,
-            borderTopColor: "#ccc",
+            height: 80,
+            borderTopWidth: 0.4,
+            borderTopColor: "#d1d5db",
           },
         }}
       >
+        {/* Marketplace */}
         <Tabs.Screen
           name="marketplace"
           options={{
-            title: "Marketplace",
+            title: "Shop",
+            headerShown: true,
+            headerLeft: () => <MarketplaceHeaderLeft />,
+            headerRight: () => <MarketplaceHeaderRight />,
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="storefront-outline" size={size} color={color} />
             ),
-            headerTitle: "Marketplace", // Simple title
-            headerTitleAlign: "center",
-            headerLeft: () => <MarketplaceHeaderLeft />,
-            headerRight: () => <MarketplaceHeaderRight />,
-            headerStyle: {
-              backgroundColor: '#FFFFFF',
-              height: 120,
-              elevation: 0,
-              shadowOpacity: 0,
-              borderBottomWidth: 1,
-              borderBottomColor: '#E5E7EB'
-            },
-            headerTitleStyle: {
-              fontWeight: 'bold',
-              fontSize: 18,
-              color: '#1F2937',
-            },
           }}
         />
+
+        {/* Cart */}
         <Tabs.Screen
           name="cart"
           options={{
             title: "Cart",
+            headerShown: true,
+            header: () => <CartHeader />,
+            tabBarBadge: cartCount > 0 ? cartCount : undefined,
+            tabBarBadgeStyle: {
+              backgroundColor: "#EF4444",
+              color: "#fff",
+            },
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="cart-outline" size={size} color={color} />
             ),
           }}
         />
+
+        {/* Promotions */}
         <Tabs.Screen
-          name="favorites"
+          name="promotions"
           options={{
-            title: "Favorites",
+            title: "Promotions",
+            headerShown: true,
+            headerTitle: "Promotions",
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="heart-outline" size={size} color={color} />
+              <Ionicons name="pricetag-outline" size={size} color={color} />
             ),
           }}
         />
+
+        {/* Checkout */}
         <Tabs.Screen
           name="checkout"
           options={{
             title: "Checkout",
+            headerShown: false,
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="card-outline" size={size} color={color} />
             ),
           }}
         />
+
+        {/* Profile */}
         <Tabs.Screen
           name="profile"
           options={{
             headerShown: false,
+            title: "Profile",
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="person-circle-outline" size={size} color={color} />
             ),
           }}
         />
       </Tabs>
-    </CartProvider>
+
+      <SupportBubble />
+    </>
   );
 }
 
-const styles = {
-  headerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+//
+//  STYLE SHEET
+//
+const styles = StyleSheet.create({
+
+  // Marketplace Header
+  marketHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 14,
   },
-  userProfileSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 16,
-  },
-  userAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     borderWidth: 2,
-    borderColor: '#7C3AED',
+    borderColor: "#7C3AED",
   },
-  userInfo: {
-    marginLeft: 12,
-  },
-  greeting: {
+  helloText: {
     fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
+    color: "#6B7280",
   },
-  userName: {
-    fontSize: 16,
-    color: '#1F2937',
-    fontWeight: 'bold',
-    marginTop: 2,
+  userNameText: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#1F2937",
   },
-  shortcutIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginRight: 16,
+  marketHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingRight: 16,
   },
-  iconButton: {
+  iconBtn: {
     width: 40,
     height: 40,
+    backgroundColor: "#F3E8FF",
     borderRadius: 20,
-    backgroundColor: '#F5F3FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
+    justifyContent: "center",
+    alignItems: "center",
   },
-  notificationBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#EF4444',
+  notifBadge: {
+    position: "absolute",
+    top: -1,
+    right: -1,
     width: 16,
     height: 16,
+    backgroundColor: "#EF4444",
     borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
-  badgeText: {
-    color: '#FFFFFF',
+  notifBadgeText: {
+    color: "#fff",
     fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
-  roleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F3FF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 16,
-    borderWidth: 1,
-    borderColor: '#DDD6FE'
+
+  // CART HEADER
+  cartHeader: {
+    backgroundColor: "#7C3AED",
+    height: 90,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    justifyContent: "flex-end",
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
   },
-  roleText: {
-    marginLeft: 6,
-    color: '#7C3AED',
-    fontWeight: '600',
-    fontSize: 12,
+  cartHeaderTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#ffffff",
   },
-};
+  cartHeaderSubtitle: {
+    fontSize: 13,
+    color: "#f3f4f6",
+  },
+
+  // Floating Chat
+  chatBubble: {
+    position: "absolute",
+    right: 22,
+    bottom: 100,
+    width: 60,
+    height: 60,
+    backgroundColor: "#7C3AED",
+    borderRadius: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 4 },
+  },
+});
